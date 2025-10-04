@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lavumi ZZANG</title>
+    <style>
+        body {
+            background: linear-gradient(
+                    45deg,
+                    white 0%,
+                    white 49%,
+                    black 49%,
+                    black 51%,
+                    white 51%,
+                    white 100%
+            ) repeat;
+            background-size: 20px 20px;
+            justify-content: center;
+            /*display: flex;*/
+            min-height: 100vh;
+        }
+        canvas {
+            background-color: white;
+            padding: 0;
+            margin: auto;
+            display: block;
+        }
+        .canvas-container {
+            width : 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /*overflow: hidden;*/
+        }
+        .canvas-wrapper {
+            display: flex;
+            width: fit-content;
+        }
+        footer {
+            text-align: center;
+            margin-top: 20px;
+            background-color: #fff;
+        }
+    </style>
+</head>
+
+<body >
+<div class="canvas-container">
+    <div class="canvas-wrapper">
+        <canvas id="neuralNetworkCanvas"></canvas>
+        <div id="wgpu-wasm"></div>
+    </div>
+</div>
+<script type="module">
+    import init from "./pkg/flappy_bird.js";
+    init().then(() => {
+        let canvas = document.getElementById("wasm-canvas");
+        canvas.style.height = "40rem";
+        canvas.style.width = "auto";
+        window.addEventListener('keyup', function (e) {
+            if (e.key === 'f') {
+                canvas.mozRequestFullScreen();
+            }
+        });
+    });
+</script>
+<footer>
+    Playing FlappyBird with<br>
+    Neural Network and Generic Algorithm
+</footer>
+</body>
+
+</html>
