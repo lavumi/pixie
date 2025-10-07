@@ -1,13 +1,11 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::winit_state::WinitState;
 use crate::flappy_app::FlappyApplication;
 
-// Re-export renderer from engine
-pub use engine::renderer;
+// Re-export renderer from pixie
+pub use pixie::renderer;
 
-pub mod winit_state;
 pub mod flappy_app;
 mod components;
 mod resources;
@@ -33,16 +31,15 @@ pub async fn start(){
         }
     }
 
-    let (wb, event_loop) = WinitState::create(title, width, height );
-
     let app = FlappyApplication::default();
-    let mut engine = engine::Engine::new(app, wb, &event_loop).await;
-
+    let dispatcher = system::build();
+    
     // Load game-specific textures
-    engine.get_render_state_mut().load_texture_atlas("tile", include_bytes!("../assets/img/tile.png"));
-    engine.get_render_state_mut().load_texture_atlas("bg", include_bytes!("../assets/img/bg.png"));
-    engine.get_render_state_mut().load_texture_atlas("player", include_bytes!("../assets/img/player.png"));
-
-    event_loop.run_app(&mut engine).unwrap();
+    let mut textures = std::collections::HashMap::new();
+    textures.insert("tile".to_string(), include_bytes!("../assets/img/tile.png") as &[u8]);
+    textures.insert("bg".to_string(), include_bytes!("../assets/img/bg.png") as &[u8]);
+    textures.insert("player".to_string(), include_bytes!("../assets/img/player.png") as &[u8]);
+    
+    pixie::Engine::start(app, title, width, height, Some(textures), dispatcher).await;
 }
 

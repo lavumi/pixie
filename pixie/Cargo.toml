@@ -1,18 +1,13 @@
 [package]
-name = "flappy_bird"
+name = "pixie"
 version = "0.1.0"
 edition = "2021"
-description = "Flappy Bird AI demo using neural networks and genetic algorithms"
+description = "Generic game engine with wgpu rendering and ECS"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "flappy"
-path = "src/main.rs"
-
 [dependencies]
-pixie = { path = "../../pixie" }
 cfg-if = { workspace = true }
 anyhow = { workspace = true }
 winit = { workspace = true }

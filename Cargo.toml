@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "engine",
-    "examples/flappy_bird"
+    "pixie",
+    "examples/flappy_bird",
+    "examples/physics_demo"
 ]
 
 [workspace.dependencies]

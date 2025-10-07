@@ -4,15 +4,14 @@ use specs::{Join, World, WorldExt};
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use engine::{Application, Camera, DeltaTime};
-use engine::renderer::{TileRenderData, TextRenderData};
+use pixie::{Application, Camera, DeltaTime};
+use pixie::renderer::{TileRenderData, TextRenderData};
 
 use crate::builder::{background, pipe, ai_player};
 use crate::components::*;
 use crate::game_configs::GENE_SIZE;
 use crate::resources::*;
-use crate::system;
-use crate::system::UnifiedDispatcher;
+// systems are now built and owned by the engine
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
@@ -24,15 +23,11 @@ impl Default for Stage {
     }
 }
 
-pub struct FlappyApplication {
-    dispatcher: Box<dyn UnifiedDispatcher + 'static>,
-    stage: Stage,
-}
+pub struct FlappyApplication { stage: Stage }
 
 impl Default for FlappyApplication {
     fn default() -> Self {
         FlappyApplication {
-            dispatcher: system::build(),
             stage: Stage::Ready,
         }
     }
@@ -53,8 +48,8 @@ impl FlappyApplication {
         let mut finished = world.write_resource::<GameFinished>();
         *finished = GameFinished(false);
 
-        let mut inputs = world.write_resource::<engine::InputHandler>();
-        *inputs = engine::InputHandler::default();
+        let mut inputs = world.write_resource::<pixie::InputHandler>();
+        *inputs = pixie::InputHandler::default();
 
         let mut score = world.write_resource::<Score>();
         *score = Score::default();
@@ -73,7 +68,7 @@ impl FlappyApplication {
         let gene_handler = world.read_resource::<GeneHandler>();
 
         let player = world.read_storage::<Player>();
-        let transform = world.read_storage::<engine::Transform>();
+        let transform = world.read_storage::<pixie::Transform>();
         let dna = world.read_storage::<DNA>();
         let pipe = world.read_storage::<PipeTarget>();
         let last_player = (&player, &transform, &dna).join().last();
@@ -103,24 +98,24 @@ impl FlappyApplication {
 impl Application for FlappyApplication {
     fn init(&mut self, world: &mut World) {
         // Register components
-        world.register::<engine::Transform>();
-        world.register::<engine::Collider>();
-        world.register::<engine::Tile>();
+        world.register::<pixie::Transform>();
+        world.register::<pixie::Collider>();
+        world.register::<pixie::Tile>();
         world.register::<Background>();
         world.register::<Player>();
         world.register::<Pipe>();
         world.register::<PipeTarget>();
-        world.register::<engine::Animation>();
-        world.register::<engine::Text>();
+        world.register::<pixie::Animation>();
+        world.register::<pixie::Text>();
         world.register::<DNA>();
 
         // Insert resources
-        world.insert(Camera::init_orthographic(9));
+        world.insert(Camera::init_orthographic(9, 500.0 / 900.0));
         world.insert(DeltaTime(0.05));
         world.insert(GameFinished(false));
         world.insert(ThreadRng::default());
         world.insert(Score::default());
-        world.insert(engine::InputHandler::default());
+        world.insert(pixie::InputHandler::default());
         world.insert(GeneHandler::default());
 
         // Initialize game
@@ -143,9 +138,6 @@ impl Application for FlappyApplication {
         let mut delta = world.write_resource::<DeltaTime>();
         *delta = DeltaTime(dt);
         drop(delta);
-
-        self.dispatcher.run_now(world);
-        world.maintain();
     }
 
     fn handle_input(&mut self, world: &mut World, event: &WindowEvent) -> bool {
@@ -182,7 +174,7 @@ impl Application for FlappyApplication {
                                 true
                             }
                             PhysicalKey::Code(_) => {
-                                let mut input_handler = world.write_resource::<engine::InputHandler>();
+                                let mut input_handler = world.write_resource::<pixie::InputHandler>();
                                 input_handler.receive_keyboard_input(state, physical_key)
                             }
                             _ => false,
@@ -200,8 +192,8 @@ impl Application for FlappyApplication {
     }
 
     fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>> {
-        let tiles = world.read_storage::<engine::Tile>();
-        let transforms = world.read_storage::<engine::Transform>();
+        let tiles = world.read_storage::<pixie::Tile>();
+        let transforms = world.read_storage::<pixie::Transform>();
         let rt_data = (&tiles, &transforms).join().collect::<Vec<_>>();
 
         let mut tile_instance_data_hashmap = HashMap::new();
@@ -249,4 +241,5 @@ impl Application for FlappyApplication {
 
         text_render_data
     }
+    fn should_run_fixed(&self, _world: &World) -> bool { self.stage == Stage::Run }
 }

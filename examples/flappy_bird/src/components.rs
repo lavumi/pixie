@@ -3,7 +3,7 @@ use specs_derive::Component;
 use crate::game_configs::GENE_SIZE;
 
 // Re-export generic components from engine
-pub use engine::components::*;
+pub use pixie::components::*;
 
 #[derive(Component, Clone)]
 pub struct Background {

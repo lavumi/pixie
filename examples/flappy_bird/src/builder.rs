@@ -62,7 +62,7 @@ pub fn pipe(world: &mut World, pos: f32) {
             atlas: "tile".to_string(),
         })
         .with(Transform {
-            position: [pos, rand - 6.0, 0.2],
+            position: [pos, rand - 6.0, 0.3],
             size: [2.0, 2.0],
         })
         .with(Pipe {
@@ -77,7 +77,7 @@ pub fn pipe(world: &mut World, pos: f32) {
             atlas: "tile".to_string(),
         })
         .with(Transform {
-            position: [pos, rand * 0.5 - 7.0, 0.2],
+            position: [pos, rand * 0.5 - 7.0, 0.3],
             size: [2.0, rand],
         })
         .with(Pipe {
@@ -92,7 +92,7 @@ pub fn pipe(world: &mut World, pos: f32) {
             atlas: "tile".to_string(),
         })
         .with(Transform {
-            position: [pos, rand + HOLE_SIZE - 4.0, 0.2],
+            position: [pos, rand + HOLE_SIZE - 4.0, 0.3],
             size: [2.0, 2.0],
         })
         .with(Pipe {
@@ -106,7 +106,7 @@ pub fn pipe(world: &mut World, pos: f32) {
             atlas: "tile".to_string(),
         })
         .with(Transform {
-            position: [pos, (rand + HOLE_SIZE - 4.0) * 0.5 + 5.5, 0.2],
+            position: [pos, (rand + HOLE_SIZE - 4.0) * 0.5 + 5.5, 0.3],
             size: [2.0, 13.0 - (rand + HOLE_SIZE)],
         })
         .with(Pipe {

@@ -1,5 +1,5 @@
 // Re-export generic resources from engine
-pub use engine::resources::*;
+pub use pixie::resources::*;
 
 pub use score::Score;
 pub use game_stage::GameFinished;

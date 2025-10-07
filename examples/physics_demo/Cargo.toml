@@ -1,14 +1,16 @@
 [package]
-name = "flappy_bird"
+name = "physics_demo"
 version = "0.1.0"
 edition = "2021"
-description = "Flappy Bird AI demo using neural networks and genetic algorithms"
+description = "2D Physics demo with bouncing balls"
+license = "MIT"
+repository = "https://github.com/lavumi/pixie"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "flappy"
+name = "physics"
 path = "src/main.rs"
 
 [dependencies]
@@ -25,8 +27,6 @@ specs-derive = { workspace = true }
 cgmath = { workspace = true }
 instant = { workspace = true }
 rand = { workspace = true }
-fontdue = { workspace = true }
-futures-intrusive = { workspace = true }
 specs = { workspace = true }
 image = { workspace = true }
 

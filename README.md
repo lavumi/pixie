@@ -97,7 +97,7 @@ pixie/
 To create a new game, implement the `Application` trait:
 
 ```rust
-use engine::{Application, Engine};
+use pixie::{Application, Engine};
 use specs::World;
 use winit::event::WindowEvent;
 

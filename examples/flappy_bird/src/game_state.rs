@@ -11,7 +11,7 @@ use crate::game_configs::GENE_SIZE;
 use crate::resources::*;
 use crate::system;
 use crate::system::UnifiedDispatcher;
-use engine::renderer::*;
+use pixie::renderer::*;
 
 
 #[allow(dead_code)]
@@ -53,7 +53,7 @@ impl GameState {
         self.world.register::<Text>();
         self.world.register::<DNA>();
 
-        self.world.insert(Camera::init_orthographic(9));
+        self.world.insert(Camera::init_orthographic(9, 500.0 / 900.0));
         self.world.insert(DeltaTime(0.05));
         self.world.insert(GameFinished(false));
         self.world.insert(ThreadRng::default());

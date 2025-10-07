@@ -1,6 +1,6 @@
 // Re-export generic systems from engine
-pub use engine::systems::*;
-pub use engine::dispatcher::UnifiedDispatcher;
+pub use pixie::systems::*;
+pub use pixie::dispatcher::UnifiedDispatcher;
 
 pub use check_collision::CheckCollision;
 pub use scroll_background::ScrollBackground;
@@ -17,7 +17,7 @@ mod check_game_stage;
 mod process_nn;
 
 // Define game-specific system execution order
-engine::construct_dispatcher!(
+pixie::construct_dispatcher!(
     (UpdateCamera, "update_camera", &[]),
     (ScrollBackground, "update_scroll", &[]),
     (UpdatePipe, "update_pipe", &[]),

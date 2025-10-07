@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lavumi ZZANG</title>
+    <title>Pixie - Physics Demo</title>
     <style>
         body {
             background: linear-gradient(
@@ -50,7 +50,7 @@
 <body >
 <div class="canvas-container">
     <div class="canvas-wrapper">
-        <canvas id="neuralNetworkCanvas"></canvas>
+        <!-- <canvas id="neuralNetworkCanvas"></canvas> -->
         <div id="wgpu-wasm"></div>
     </div>
 </div>
@@ -58,8 +58,8 @@
     import init from "./pkg/physics_demo.js";
     init().then(() => {
         let canvas = document.getElementById("wasm-canvas");
-        canvas.style.height = "40rem";
-        canvas.style.width = "auto";
+        canvas.style.height = "60rem";
+
         window.addEventListener('keyup', function (e) {
             if (e.key === 'f') {
                 canvas.mozRequestFullScreen();
@@ -68,8 +68,8 @@
     });
 </script>
 <footer>
-    Playing FlappyBird with<br>
-    Neural Network and Generic Algorithm
+    Playing Physics Demo with<br>
+    Pixie Engine
 </footer>
 </body>
 
