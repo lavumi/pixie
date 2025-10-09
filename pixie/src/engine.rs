@@ -6,10 +6,8 @@ use winit::{
     window::Window,
     application::ApplicationHandler,
     dpi::PhysicalSize,
+    dpi::LogicalSize,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use winit::dpi::LogicalSize;
-// use winit::dpi::PhysicalPosition; // no longer needed
 use std::sync::Arc;
 use std::collections::HashMap;
 use specs::{World, WorldExt};
@@ -18,6 +16,7 @@ use crate::application::Application;
 use crate::renderer::*;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::resources::DeltaTime;
+#[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
 
 pub struct Engine<A: Application> {
@@ -36,17 +35,13 @@ pub struct Engine<A: Application> {
     initial_width: u32,
     initial_height: u32,
     textures_to_load: Option<HashMap<String, &'static [u8]>>,
+    #[cfg(target_arch = "wasm32")]
+    wasm_pending_rs: Option<std::rc::Rc<std::cell::RefCell<Option<RenderState>>>>,
 }
 
 impl<A: Application> ApplicationHandler<()> for Engine<A> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.window.is_none() {
-            #[cfg(target_arch = "wasm32")]
-            let window_attributes = Window::default_attributes()
-                .with_title(self.title.clone())
-                .with_inner_size(PhysicalSize::new(self.initial_width, self.initial_height));
-
-            #[cfg(not(target_arch = "wasm32"))]
             let window_attributes = Window::default_attributes()
                 .with_title(self.title.clone())
                 .with_inner_size(LogicalSize::new(self.initial_width, self.initial_height));
@@ -68,20 +63,37 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                         Some(())
                     })
                     .expect("Couldn't append canvas to document body.");
+
+                use std::rc::Rc;
+                use std::cell::RefCell;
+
+                let pending: Rc<RefCell<Option<RenderState>>> = Rc::new(RefCell::new(None));
+                let pending_clone = Rc::clone(&pending);
+                let window_clone = window.clone();
+                let w = self.initial_width;
+                let h = self.initial_height;
+                wasm_bindgen_futures::spawn_local(async move {
+                    let mut rs = RenderState::new(window_clone, w, h).await;
+                    rs.init_resources().await;
+                    *pending_clone.borrow_mut() = Some(rs);
+                });
+
+                self.wasm_pending_rs = Some(pending);
+                self.size = PhysicalSize::new(self.initial_width, self.initial_height); 
             }
 
-            let mut rs = block_on(RenderState::new(window.clone(), self.initial_width, self.initial_height));
-            block_on(rs.init_resources());
-
-            if let Some(textures) = self.textures_to_load.take() {
-                for (name, image_bytes) in textures {
-                    rs.load_texture_atlas(&name, image_bytes);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let mut rs = block_on(RenderState::new(window.clone(), self.initial_width, self.initial_height));
+                block_on(rs.init_resources());
+                if let Some(textures) = self.textures_to_load.take() {
+                    for (name, image_bytes) in textures { rs.load_texture_atlas(&name, image_bytes); }
                 }
+                self.rs = Some(rs);
+                self.size = window.inner_size();
             }
 
-            self.size = window.inner_size();
             self.window = Some(window);
-            self.rs = Some(rs);
         }
         if let Some(w) = &self.window { w.request_redraw(); }
     }
@@ -110,6 +122,20 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                         self.resize(new_size);
                     }
                     WindowEvent::RedrawRequested => {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            // If async renderer finished, take it and finalize
+                            if self.rs.is_none() {
+                                if let Some(holder) = &self.wasm_pending_rs {
+                                    if let Some(mut rs) = holder.borrow_mut().take() {
+                                        if let Some(textures) = self.textures_to_load.take() {
+                                            for (name, image_bytes) in textures { rs.load_texture_atlas(&name, image_bytes); }
+                                        }
+                                        self.rs = Some(rs);
+                                    }
+                                }
+                            }
+                        }
                         let mut elapsed_time = self.prev_time.elapsed().as_millis() as f32 / 1000.0;
                         self.prev_time = Instant::now();
 
@@ -147,6 +173,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
 }
 
 impl<A: Application> Engine<A> {
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn new<T: Into<String>>(
         mut app: A,
         title: T,
@@ -183,6 +210,8 @@ impl<A: Application> Engine<A> {
             initial_width: width,
             initial_height: height,
             textures_to_load: None,
+            #[cfg(target_arch = "wasm32")]
+            wasm_pending_rs: None,
         };
         
         (engine, event_loop)
@@ -227,6 +256,8 @@ impl<A: Application> Engine<A> {
             initial_width: width,
             initial_height: height,
             textures_to_load: textures,
+            #[cfg(target_arch = "wasm32")]
+            wasm_pending_rs: None,
         };
 
         event_loop.run_app(&mut engine).unwrap();
