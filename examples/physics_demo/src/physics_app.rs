@@ -77,26 +77,6 @@ impl Application for PhysicsApp {
         world.insert(Gravity::default());
 
 
-
-        
-
-        // Create one large test ball in center
-        // world.create_entity()
-        // .with(Transform {
-        //     position: [0.0, 0.0, 0.5],
-        //     size: [1.0, 1.0],
-        // })
-        // .with(Tile {
-        //     uv: [0.0, 1.0, 0.0, 1.0],
-        //     atlas: "ball".to_string(),
-        // })
-        // .with(RigidBody::default())
-        // .with(Velocity::default())
-        // .with(Force::default())
-        // .with(CircleCollider { radius:0.5})
-        // .build();
-
-
         // Create boundaries (static walls)
         self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0);   // Bottom
         // self.create_boundary(world, 0.0, 9.5, 20.0, 1.0);    // Top
@@ -104,6 +84,8 @@ impl Application for PhysicsApp {
         self.create_boundary(world, config::BOX_SIZE[0] / 2.0 + 0.5, -5.5, 1.0, config::BOX_SIZE[1]);    // Right
 
 
+
+        self.start_ball_shooting();
         log::info!("Physics demo initialized - 10 balls + 4 walls created");
     }
 
@@ -120,12 +102,13 @@ impl Application for PhysicsApp {
         match event {
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
                 // Only allow shooting when in Ready state
-                if matches!(self.ball_state, BallState::Ready) {
-                    self.start_ball_shooting();
-                    true
-                } else {
-                    false // Ignore clicks when already shooting or complete
-                }
+                // if matches!(self.ball_state, BallState::Ready) {
+                //     self.start_ball_shooting();
+                //     true
+                // } else {
+                //     false // Ignore clicks when already shooting or complete
+                // }
+                false
             }
             WindowEvent::KeyboardInput { event: key_event, .. } => {
                 if key_event.state == ElementState::Pressed {
@@ -135,17 +118,17 @@ impl Application for PhysicsApp {
                             true
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
-                            self.gravity_enabled = !self.gravity_enabled;
+                            // self.gravity_enabled = !self.gravity_enabled;
 
-                            // Toggle gravity in the world resource
-                            let mut gravity = world.write_resource::<Gravity>();
-                            if self.gravity_enabled {
-                                gravity.value = config::GRAVITY;
-                            } else {
-                                gravity.value = [0.0, 0.0];
-                            }
+                            // // Toggle gravity in the world resource
+                            // let mut gravity = world.write_resource::<Gravity>();
+                            // if self.gravity_enabled {
+                            //     gravity.value = config::GRAVITY;
+                            // } else {
+                            //     gravity.value = [0.0, 0.0];
+                            // }
 
-                            log::info!("Gravity: {}", self.gravity_enabled);
+                            // log::info!("Gravity: {}", self.gravity_enabled);
                             true
                         }
                         _ => false
@@ -238,6 +221,7 @@ impl PhysicsApp {
             }
         }
 
+        self.start_ball_shooting();
 
         world.maintain();
 
