@@ -143,7 +143,16 @@ pub fn ai_player(world: &mut World) {
             size: [1., 1.],
         })
         .with(Player::default())
-        .with(Animation::default())
+        .with( Animation {
+            current_frame: 0,
+            frame_count: 4,
+            frame_duration: 0.2,
+            elapsed_time: 0.0,
+            loop_animation: true,
+            finished: false,
+            atlas_columns: 4,
+            atlas_rows: 1,
+        })
         .with(dna)
         .build();
 }

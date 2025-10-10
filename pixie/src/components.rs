@@ -35,10 +35,31 @@ pub struct Text {
     pub color : [f32;3]
 }
 
-#[derive(Component, Clone, Default)]
+#[derive(Component, Clone)]
 pub struct Animation {
-    pub index : u32,
-    pub delta : f32,
+    pub current_frame: u32,
+    pub frame_count: u32,
+    pub frame_duration: f32,
+    pub elapsed_time: f32,
+    pub loop_animation: bool,
+    pub finished: bool,
+    pub atlas_columns: u32,
+    pub atlas_rows: u32,
+}
+
+impl Default for Animation {
+    fn default() -> Self {
+        Animation {
+            current_frame: 0,
+            frame_count: 1,
+            frame_duration: 1.0,
+            elapsed_time: 0.0,
+            loop_animation: true,
+            finished: false,
+            atlas_columns: 1,
+            atlas_rows: 1,
+        }
+    }
 }
 
 // Physics components
