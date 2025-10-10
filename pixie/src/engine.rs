@@ -191,8 +191,13 @@ impl<A: Application> Engine<A> {
         // Initialize World
         let mut world = World::new();
 
-        // Initialize application
+        // Initialize application first to get camera height
         app.init(&mut world);
+
+        // Insert camera with application's preferred height and calculated aspect ratio
+        let camera_height = app.get_camera_height() as u32;
+        let aspect_ratio = width as f32 / height as f32;
+        world.insert(crate::resources::Camera::init_orthographic(camera_height, aspect_ratio));
 
 
 
@@ -238,9 +243,14 @@ impl<A: Application> Engine<A> {
         // Initialize World
         let mut world = World::new();
 
-        // Initialize application
+        // Initialize application first to get camera height
         let mut app = app;
         app.init(&mut world);
+
+        // Insert camera with application's preferred height and calculated aspect ratio
+        let camera_height = app.get_camera_height() as u32;
+        let aspect_ratio = width as f32 / height as f32;
+        world.insert(crate::resources::Camera::init_orthographic(camera_height, aspect_ratio));
 
         let mut engine = Self {
             app,
@@ -279,8 +289,11 @@ impl<A: Application> Engine<A> {
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let rs = match &mut self.rs { Some(rs) => rs, None => return Ok(()) };
-        // 1. Update camera
-        let camera_uniform = self.app.get_camera_uniform(&self.world);
+        // 1. Update camera from engine's managed camera
+        let camera_uniform = {
+            let camera = self.world.read_resource::<crate::resources::Camera>();
+            camera.get_view_proj()
+        };
         rs.update_camera_buffer(camera_uniform);
 
         // 2. Update meshes

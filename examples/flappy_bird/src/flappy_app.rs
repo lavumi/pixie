@@ -4,7 +4,7 @@ use specs::{Join, World, WorldExt};
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Camera, DeltaTime};
+use pixie::{Application, DeltaTime};
 use pixie::renderer::{TileRenderData, TextRenderData};
 
 use crate::builder::{background, pipe, ai_player};
@@ -101,6 +101,8 @@ impl Application for FlappyApplication {
         world.register::<pixie::Transform>();
         world.register::<pixie::Collider>();
         world.register::<pixie::Tile>();
+
+        
         world.register::<Background>();
         world.register::<Player>();
         world.register::<Pipe>();
@@ -110,7 +112,6 @@ impl Application for FlappyApplication {
         world.register::<DNA>();
 
         // Insert resources
-        world.insert(Camera::init_orthographic(9, 500.0 / 900.0));
         world.insert(DeltaTime(0.05));
         world.insert(GameFinished(false));
         world.insert(ThreadRng::default());
@@ -189,10 +190,6 @@ impl Application for FlappyApplication {
         }
     }
 
-    fn get_camera_uniform(&self, world: &World) -> [[f32; 4]; 4] {
-        let camera = world.read_resource::<Camera>();
-        camera.get_view_proj()
-    }
 
     fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>> {
         let tiles = world.read_storage::<pixie::Tile>();
@@ -245,4 +242,8 @@ impl Application for FlappyApplication {
         text_render_data
     }
     fn should_run_fixed(&self, _world: &World) -> bool { self.stage == Stage::Run }
+
+    fn get_camera_height(&self) -> f32 {
+        9.0 // Flappy Bird uses height of 9
+    }
 }

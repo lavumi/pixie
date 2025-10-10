@@ -71,19 +71,16 @@ impl Application for PhysicsApp {
         world.register::<BoxCollider>();
 
         // Insert resources
-        let aspect_ratio = config::SCREEN_SIZE[0] as f32 / config::SCREEN_SIZE[1] as f32;
-        world.insert(Camera::init_orthographic(15, aspect_ratio));
+        // let aspect_ratio = config::SCREEN_SIZE[0] as f32 / config::SCREEN_SIZE[1] as f32;
+        // world.insert(Camera::init_orthographic(15, aspect_ratio));
         world.insert(DeltaTime(0.0));
         world.insert(Gravity::default());
 
 
         // Create boundaries (static walls)
         self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0);   // Bottom
-        // self.create_boundary(world, 0.0, 9.5, 20.0, 1.0);    // Top
         self.create_boundary(world, -config::BOX_SIZE[0] / 2.0 - 0.5,  -5.5, 1.0, config::BOX_SIZE[1]);   // Left
         self.create_boundary(world, config::BOX_SIZE[0] / 2.0 + 0.5, -5.5, 1.0, config::BOX_SIZE[1]);    // Right
-
-
 
         self.start_ball_shooting();
         log::info!("Physics demo initialized - 10 balls + 4 walls created");
@@ -139,11 +136,6 @@ impl Application for PhysicsApp {
             }
             _ => false
         }
-    }
-
-    fn get_camera_uniform(&self, world: &World) -> [[f32; 4]; 4] {
-        let camera = world.read_resource::<Camera>();
-        camera.get_view_proj()
     }
 
     fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>> {

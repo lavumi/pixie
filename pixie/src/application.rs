@@ -17,9 +17,6 @@ pub trait Application {
     /// 입력 처리 (반환값: 이벤트 소비 여부)
     fn handle_input(&mut self, world: &mut World, event: &WindowEvent) -> bool;
 
-    /// 카메라 변환 행렬 제공
-    fn get_camera_uniform(&self, world: &World) -> [[f32; 4]; 4];
-
     /// 타일 렌더링 데이터 제공
     fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>>;
 
@@ -28,4 +25,7 @@ pub trait Application {
 
     /// 고정 스텝을 실행할지 여부 (일시정지/상태에 따라 제어). 기본값: 항상 실행
     fn should_run_fixed(&self, _world: &World) -> bool { true }
+
+    /// 카메라 높이 설정. 기본값: 10.0
+    fn get_camera_height(&self) -> f32 { 10.0 }
 }
