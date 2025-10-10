@@ -267,7 +267,7 @@ impl GPUResourceManager {
         if mesh.num_instances == tile_instance.len() as u32 {
             queue.write_buffer(mesh.instance_buffer.as_ref().unwrap(), 0, bytemuck::cast_slice(&tile_instance));
         } else {
-            log::info!("update_mesh_instance {} before : {} , after : {}", name_str ,mesh.num_instances , tile_instance.len() );
+            log::debug!("update_mesh_instance {} before : {} , after : {}", name_str ,mesh.num_instances , tile_instance.len() );
             let instance_buffer = device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some(format!("Instance Buffer {}", name_str).as_str()),
@@ -295,7 +295,7 @@ impl GPUResourceManager {
         if mesh.num_instances == tile_instance.len() as u32 {
             queue.write_buffer(mesh.instance_buffer.as_ref().unwrap(), 0, bytemuck::cast_slice(&tile_instance));
         } else {
-            log::info!("update_mesh_instance {} before : {} , after : {}", name_str ,mesh.num_instances , tile_instance.len() );
+            log::debug!("update_mesh_instance {} before : {} , after : {}", name_str ,mesh.num_instances , tile_instance.len() );
             let instance_buffer = device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some(format!("Instance Buffer {}", name_str).as_str()),
@@ -313,7 +313,7 @@ impl GPUResourceManager {
     ) {
         self.set_bind_group(render_pass, "camera");
 
-        log::info!("Rendering {} meshes", self.meshes_by_atlas.len());
+        log::debug!("Rendering {} meshes", self.meshes_by_atlas.len());
         // Render all registered meshes except font (font is rendered in render_ui)
         for atlas_name in self.meshes_by_atlas.keys() {
             if atlas_name != "font" {

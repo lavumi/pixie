@@ -26,13 +26,13 @@ pub struct Player {
 }
 
 
-//region [ Neural Network ]
-#[derive(Component, Clone, Default)]
-pub struct NeuralLayer {
-    pub weights: Vec<Vec<f32>>,
-    pub values : Vec<f32>,
-    pub bias : Vec<f32>
-}
+// //region [ Neural Network ]
+// #[derive(Component, Clone, Default)]
+// pub struct NeuralLayer {
+//     pub weights: Vec<Vec<f32>>,
+//     pub values : Vec<f32>,
+//     pub bias : Vec<f32>
+// }
 
 
 #[derive(Component, Clone)]

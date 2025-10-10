@@ -116,20 +116,20 @@ pub fn pipe(world: &mut World, pos: f32) {
         .build();
 }
 
-pub fn player(world: &mut World) {
-    world.create_entity()
-        .with(Tile {
-            uv: [0.0, 0.25, 0.0, 1.0],
-            atlas: "player".to_string(),
-        })
-        .with(Transform {
-            position: [0., 0., 0.3],
-            size: [1., 1.],
-        })
-        .with(Player::default())
-        .with(Animation::default())
-        .build();
-}
+// pub fn player(world: &mut World) {
+//     world.create_entity()
+//         .with(Tile {
+//             uv: [0.0, 0.25, 0.0, 1.0],
+//             atlas: "player".to_string(),
+//         })
+//         .with(Transform {
+//             position: [0., 0., 0.3],
+//             size: [1., 1.],
+//         })
+//         .with(Player::default())
+//         .with(Animation::default())
+//         .build();
+// }
 
 pub fn ai_player(world: &mut World) {
     let dna = world.write_resource::<GeneHandler>().get_dna();

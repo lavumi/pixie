@@ -221,7 +221,7 @@ impl Application for FlappyApplication {
 
         let mut text_render_data = vec![
             TextRenderData {
-                content: format!("Generation:{}\nScore:{:.3}\nSurvive:{}", gene_handler.generation, score.0, players),
+                content: format!("Generation: {}\nScore: {:.3}\nSurvive: {}", gene_handler.generation, score.0, players),
                 position: [-4.5, 8.5, 1.],
                 size: [0.5, 0.5],
                 color: [0.0, 0.0, 0.0],

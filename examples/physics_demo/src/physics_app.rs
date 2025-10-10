@@ -252,8 +252,8 @@ impl PhysicsApp {
             let size_index = self.shot_index % 3;
             let radius = self.ball_sizes[size_index];
 
-            log::info!("Shooting ball {} at ({}, {}) with radius {}",
-                self.shot_index, pos[0], pos[1], radius);
+            // log::info!("Shooting ball {} at ({}, {}) with radius {}",
+            //     self.shot_index, pos[0], pos[1], radius);
 
             self.shoot_ball(world, pos, radius);
 
