@@ -2,6 +2,7 @@ use specs::{Entities, Join, Read, ReadStorage, System, Write};
 
 use crate::components::{DNA, Pipe, Player, Transform};
 use crate::resources::{GeneHandler, Score};
+use crate::flappy_app::Stage;
 
 pub struct CheckCollision;
 
@@ -19,10 +20,15 @@ impl<'a> System<'a> for CheckCollision {
         //todo 이걸 여기서 해야 할까?
         ReadStorage<'a, DNA>,
         Write<'a, GeneHandler>,
-        Read<'a, Score>
+        Read<'a, Score>,
+        Read<'a, Stage>
     );
 
-    fn run(&mut self, (entities,players, pipes, transforms, dna,mut gene_handler, score): Self::SystemData) {
+    fn run(&mut self, (entities,players, pipes, transforms, dna,mut gene_handler, score, stage): Self::SystemData) {
+        // Only run when game is in Run stage
+        if *stage != Stage::Run {
+            return;
+        }
 
         for ( e, _, player_tr, d) in  (&entities, &players, &transforms, &dna).join() {
             let pt =player_tr.position;

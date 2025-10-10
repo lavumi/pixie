@@ -117,6 +117,7 @@ impl Application for FlappyApplication {
         world.insert(Score::default());
         world.insert(pixie::InputHandler::default());
         world.insert(GeneHandler::default());
+        world.insert(self.stage);
 
         // Initialize game
         self.init_game(world);
@@ -131,8 +132,10 @@ impl Application for FlappyApplication {
             self.stage = Stage::Run;
         }
 
-        if self.stage != Stage::Run {
-            return;
+        // Always update stage resource for systems to read
+        {
+            let mut stage_resource = world.write_resource::<Stage>();
+            *stage_resource = self.stage;
         }
 
         let mut delta = world.write_resource::<DeltaTime>();

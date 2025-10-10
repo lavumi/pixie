@@ -5,6 +5,7 @@ use crate::resources::{DeltaTime, Score};
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use crate::game_configs::{GAME_SPEED, HOLE_SIZE};
+use crate::flappy_app::Stage;
 
 pub struct UpdatePipe;
 
@@ -16,10 +17,15 @@ impl<'a> System<'a> for UpdatePipe {
         WriteStorage<'a, Transform>,
         Read<'a, DeltaTime>,
         Write<'a, ThreadRng>,
-        Write<'a, Score>
+        Write<'a, Score>,
+        Read<'a, Stage>
     );
 
-    fn run(&mut self, (pipes, mut tf, dt, mut rng, mut score): Self::SystemData) {
+    fn run(&mut self, (pipes, mut tf, dt, mut rng, mut score, stage): Self::SystemData) {
+        // Only run when game is in Run stage
+        if *stage != Stage::Run {
+            return;
+        }
         let mut rand = -1.0f32;
         score.0 += dt.0;
         for (p, transform) in ( &pipes, &mut tf).join() {

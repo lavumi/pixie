@@ -1,5 +1,6 @@
-use specs::{Join, ReadStorage, System, WriteStorage};
+use specs::{Join, Read, ReadStorage, System, WriteStorage};
 use crate::components::{DNA, PipeTarget, Player, Transform};
+use crate::flappy_app::Stage;
 
 pub struct ProcessNN;
 
@@ -38,9 +39,14 @@ impl<'a> System<'a> for ProcessNN {
         ReadStorage<'a, Transform>,
         WriteStorage<'a, Player>,
         ReadStorage<'a, DNA>,
+        Read<'a, Stage>,
     );
 
-    fn run(&mut self, (pipe, transform, mut pl, dna): Self::SystemData) {
+    fn run(&mut self, (pipe, transform, mut pl, dna, stage): Self::SystemData) {
+        // Only run when game is in Run stage
+        if *stage != Stage::Run {
+            return;
+        }
         let mut pipe_position = [99.0, 0.0];
 
         for (_, pipe_tr) in (&pipe, &transform).join() {
