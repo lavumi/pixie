@@ -93,6 +93,11 @@ impl Application for PhysicsApp {
         }
     }
 
+
+    fn get_camera_height(&self) -> f32 {
+        20.0
+    }
+
     // No dispatcher building in app anymore
 
     fn handle_input(&mut self, world: &mut World, event: &WindowEvent) -> bool {
