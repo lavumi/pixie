@@ -18,9 +18,6 @@ pub trait Application {
     /// Handle input (returns whether the event was consumed)
     fn handle_input(&mut self, world: &mut World, resources: &mut ResourceContainer, event: &WindowEvent) -> bool;
 
-    /// Provide camera transformation matrix
-    fn get_camera_uniform(&self, world: &World, resources: &ResourceContainer) -> [[f32; 4]; 4];
-
     /// Provide tile rendering data
     fn get_tile_instances(&self, world: &World, resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>>;
 

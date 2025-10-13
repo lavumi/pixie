@@ -3,7 +3,7 @@ use hecs::World;
 use winit::event::{WindowEvent, ElementState, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Camera, DeltaTime, Transform, Tile, Gravity, ResourceContainer};
+use pixie::{Application, Transform, Tile, Gravity, ResourceContainer};
 use pixie::{RigidBody, Velocity, Force, CircleCollider, BodyType, BoxCollider};
 use pixie::renderer::{TileRenderData, TextRenderData};
 
@@ -63,15 +63,11 @@ impl Application for PhysicsApp {
     fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
         // In hecs, we don't need to register components
 
-        // Insert resources
-        let aspect_ratio = config::SCREEN_SIZE[0] as f32 / config::SCREEN_SIZE[1] as f32;
-        resources.insert(Camera::init_orthographic(15, aspect_ratio));
-        resources.insert(DeltaTime(0.0));
+        // Insert resources (Camera and DeltaTime are created automatically by Engine)
         resources.insert(Gravity::default());
 
         // Create boundaries (static walls)
         self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0);   // Bottom
-        // self.create_boundary(world, 0.0, 9.5, 20.0, 1.0);    // Top
         self.create_boundary(world, -config::BOX_SIZE[0] / 2.0 - 0.5,  -5.5, 1.0, config::BOX_SIZE[1]);   // Left
         self.create_boundary(world, config::BOX_SIZE[0] / 2.0 + 0.5, -5.5, 1.0, config::BOX_SIZE[1]);    // Right
 
@@ -79,9 +75,7 @@ impl Application for PhysicsApp {
         log::info!("Physics demo initialized - 10 balls + 4 walls created");
     }
 
-    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, dt: f32) {
-        resources.insert(DeltaTime(dt));
-
+    fn update(&mut self, world: &mut World, _resources: &mut ResourceContainer, dt: f32) {
         // Handle ball shooting sequence
         if matches!(self.ball_state, BallState::Shooting) {
             self.process_ball_shooting(world, dt);
@@ -131,11 +125,6 @@ impl Application for PhysicsApp {
             }
             _ => false
         }
-    }
-
-    fn get_camera_uniform(&self, _world: &World, resources: &ResourceContainer) -> [[f32; 4]; 4] {
-        let camera = resources.get::<Camera>().expect("Camera resource not found");
-        camera.get_view_proj()
     }
 
     fn get_tile_instances(&self, world: &World, _resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>> {

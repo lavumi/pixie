@@ -128,38 +128,6 @@ pub fn pipe(world: &mut World, pos: f32) {
     ));
 }
 
-pub fn ai_player(world: &mut World) {
-    // TODO: This needs to access GeneHandler from resources
-    // For now, create a default DNA - will be overridden by proper gene handler
-    let dna = DNA {
-        hidden_layers: [4, 3],
-        genes: [0.0; crate::game_configs::GENE_SIZE],
-        index: 0,
-    };
-
-    world.spawn((
-        Tile {
-            uv: [0.0, 0.25, 0.0, 1.0],
-            atlas: "player".to_string(),
-        },
-        Transform {
-            position: [0., 0., 0.3],
-            size: [1., 1.],
-        },
-        Player::default(),
-        Animation {
-            current_frame: 0,
-            frame_count: 4,
-            frame_duration: 0.2,
-            elapsed_time: 0.0,
-            loop_animation: true,
-            finished: false,
-            atlas_columns: 4,
-            atlas_rows: 1,
-        },
-        dna,
-    ));
-}
 
 /// Helper to spawn ai_player with proper DNA from resources
 pub fn ai_player_with_resources(world: &mut World, resources: &mut ResourceContainer) {

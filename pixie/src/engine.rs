@@ -193,7 +193,12 @@ impl<A: Application> Engine<A> {
         let mut world = World::new();
         let mut resources = ResourceContainer::new();
 
-        // Initialize application
+        // Insert engine-managed resources first
+        let aspect_ratio = width as f32 / height as f32;
+        resources.insert(crate::resources::Camera::init_orthographic(20.0, aspect_ratio));
+        resources.insert(DeltaTime(0.0));
+
+        // Initialize application (can adjust camera via resources)
         app.init(&mut world, &mut resources);
 
         let engine = Self {
@@ -240,7 +245,12 @@ impl<A: Application> Engine<A> {
         let mut world = World::new();
         let mut resources = ResourceContainer::new();
 
-        // Initialize application
+        // Insert engine-managed resources first
+        let aspect_ratio = width as f32 / height as f32;
+        resources.insert(crate::resources::Camera::init_orthographic(20.0, aspect_ratio));
+        resources.insert(DeltaTime(0.0));
+
+        // Initialize application (can adjust camera via resources)
         let mut app = app;
         app.init(&mut world, &mut resources);
 
@@ -277,13 +287,18 @@ impl<A: Application> Engine<A> {
     }
 
     fn update(&mut self, dt: f32) {
+        self.resources.insert(DeltaTime(dt));
         self.app.update(&mut self.world, &mut self.resources, dt);
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let rs = match &mut self.rs { Some(rs) => rs, None => return Ok(()) };
-        // 1. Update camera
-        let camera_uniform = self.app.get_camera_uniform(&self.world, &self.resources);
+        // 1. Update camera from engine's managed camera
+        let camera_uniform = {
+            let camera = self.resources.get::<crate::resources::Camera>()
+                .expect("Camera resource not found");
+            camera.get_view_proj()
+        };
         rs.update_camera_buffer(camera_uniform);
 
         // 2. Update meshes

@@ -4,7 +4,7 @@ use hecs::World;
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Camera, DeltaTime, ResourceContainer};
+use pixie::{Application, ResourceContainer};
 use pixie::renderer::{TileRenderData, TextRenderData};
 
 use crate::builder::{background, pipe, ai_player_with_resources};
@@ -48,7 +48,6 @@ impl FlappyApplication {
 
         // Reset resources
         resources.insert(GameFinished(false));
-        resources.insert(pixie::InputHandler::default());
         resources.insert(Score::default());
 
         self.stage = Stage::Ready;
@@ -99,13 +98,15 @@ impl Application for FlappyApplication {
     fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
         // In hecs, we don't need to register components
 
-        // Insert resources
-        resources.insert(Camera::init_orthographic(9, 500.0 / 900.0));
-        resources.insert(DeltaTime(0.05));
+        // Set camera zoom for flappy bird
+        if let Some(camera) = resources.get_mut::<pixie::Camera>() {
+            camera.set_zoom(9.0);
+        }
+
+        // Insert resources (Camera and DeltaTime are created automatically by Engine)
         resources.insert(GameFinished(false));
         resources.insert(ThreadRng::default());
         resources.insert(Score::default());
-        resources.insert(pixie::InputHandler::default());
         resources.insert(GeneHandler::default());
         resources.insert(self.stage);
 
@@ -113,7 +114,7 @@ impl Application for FlappyApplication {
         self.init_game(world, resources);
     }
 
-    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, dt: f32) {
+    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, _dt: f32) {
         self.check_game_finished(resources);
 
         if self.stage == Stage::End {
@@ -126,7 +127,6 @@ impl Application for FlappyApplication {
 
         // Always update stage resource for systems to read
         resources.insert(self.stage);
-        resources.insert(DeltaTime(dt));
     }
 
     fn handle_input(&mut self, world: &mut World, resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
@@ -162,13 +162,6 @@ impl Application for FlappyApplication {
                                 }
                                 true
                             }
-                            PhysicalKey::Code(_) => {
-                                if let Some(input_handler) = resources.get_mut::<pixie::InputHandler>() {
-                                    input_handler.receive_keyboard_input(state, physical_key)
-                                } else {
-                                    false
-                                }
-                            }
                             _ => false,
                         }
                     }
@@ -176,12 +169,6 @@ impl Application for FlappyApplication {
             }
             _ => false,
         }
-    }
-
-    fn get_camera_uniform(&self, _world: &World, resources: &ResourceContainer) -> [[f32; 4]; 4] {
-        let camera = resources.get::<Camera>()
-            .expect("Camera resource not found");
-        camera.get_view_proj()
     }
 
     fn get_tile_instances(&self, world: &World, _resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>> {

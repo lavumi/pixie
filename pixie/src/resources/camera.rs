@@ -67,8 +67,7 @@ impl Camera {
             }
         }
 
-    pub fn init_orthographic(height: u32, aspect_ratio: f32) -> Self {
-        let height = height as f32;
+    pub fn init_orthographic(height: f32, aspect_ratio: f32) -> Self {
         let width = aspect_ratio * height;
         Self {
             // position the camera one unit up and 2 units back
@@ -119,6 +118,19 @@ impl Camera {
         self.target.y = position[1];
 
         [self.eye.x, self.eye.y]
+    }
+
+    #[allow(unused)]
+    pub fn set_zoom(&mut self, height: f32) {
+        let width = if self.aspect != 0.0 {
+            self.aspect * height
+        } else {
+            // For orthographic cameras, recalculate width based on current aspect ratio
+            let current_aspect = self.right / self.top;
+            current_aspect * height
+        };
+        self.right = width;
+        self.top = height;
     }
 
     pub fn get_view_proj(&self) -> [[f32; 4]; 4]{
