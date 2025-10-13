@@ -1,42 +1,42 @@
 use super::UnifiedDispatcher;
-use specs::prelude::*;
+use hecs::World;
+use crate::resources::ResourceContainer;
 
+/// System function type - takes world and resources, returns nothing
+pub type SystemFn = fn(&mut World, &mut ResourceContainer);
+
+/// Macro to construct a single-threaded dispatcher with given system functions
+///
+/// Example usage:
+/// ```ignore
+/// construct_dispatcher!(
+///     update_physics,
+///     update_animation,
+///     collision_system
+/// );
+/// ```
 #[macro_export]
 macro_rules! construct_dispatcher {
-    (
-        $(
-            (
-                $type:ident,
-                $name:expr,
-                $deps:expr
-            )
-        ),*
-    ) => {
-        pub fn new_dispatch() -> Box<dyn $crate::dispatcher::UnifiedDispatcher + 'static> {
-            let mut dispatch = $crate::dispatcher::SingleThreadedDispatcher{
-                systems : Vec::new()
-            };
-
+    ( $( $system_fn:expr ),* $(,)? ) => {
+        pub fn new_dispatch() -> Box<dyn $crate::dispatcher::UnifiedDispatcher> {
+            let mut systems: Vec<$crate::dispatcher::SystemFn> = Vec::new();
             $(
-                dispatch.systems.push( Box::new( $type {} ));
+                systems.push($system_fn);
             )*
-
-            return Box::new(dispatch);
+            Box::new($crate::dispatcher::SingleThreadedDispatcher { systems })
         }
     };
 }
 
-pub struct SingleThreadedDispatcher<'a> {
-    pub systems : Vec<Box<dyn RunNow<'a>>>
+/// Single-threaded dispatcher for WASM and simple use cases
+pub struct SingleThreadedDispatcher {
+    pub systems: Vec<SystemFn>,
 }
 
-impl<'a> UnifiedDispatcher for SingleThreadedDispatcher<'a> {
-    fn run_now(&mut self, ecs : *mut World) {
-        unsafe {
-            for sys in self.systems.iter_mut() {
-                sys.run_now(&*ecs);
-            }
-            // crate::effects::run_effects_queue(&mut *ecs);
+impl UnifiedDispatcher for SingleThreadedDispatcher {
+    fn run_now(&mut self, world: &mut World, resources: &mut ResourceContainer) {
+        for system_fn in &self.systems {
+            system_fn(world, resources);
         }
     }
 }

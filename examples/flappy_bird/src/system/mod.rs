@@ -2,12 +2,13 @@
 pub use pixie::systems::*;
 pub use pixie::dispatcher::UnifiedDispatcher;
 
-pub use check_collision::CheckCollision;
-pub use scroll_background::ScrollBackground;
-pub use scroll_pipe::UpdatePipe;
-pub use update_player::UpdatePlayer;
-pub use check_game_stage::CheckGameStage;
-pub use process_nn::ProcessNN;
+// Re-export game-specific system functions
+pub use check_collision::check_collision;
+pub use scroll_background::scroll_background;
+pub use scroll_pipe::scroll_pipe;
+pub use update_player::update_player;
+pub use check_game_stage::check_game_stage;
+pub use process_nn::process_nn;
 
 mod check_collision;
 mod scroll_background;
@@ -16,18 +17,18 @@ mod update_player;
 mod check_game_stage;
 mod process_nn;
 
-// Define game-specific system execution order
+// Define game-specific system execution order with function pointers
 pixie::construct_dispatcher!(
-    (UpdateCamera, "update_camera", &[]),
-    (ScrollBackground, "update_scroll", &[]),
-    (UpdatePipe, "update_pipe", &[]),
-    (ProcessNN, "process_nn", &[]),
-    (UpdatePlayer, "update_player", &[]),
-    (CheckCollision, "check_collision", &[]),
-    (CheckGameStage, "check_game_stage", &[]),
-    (UpdateAnimation, "update_animation", &[])
+    update_camera,
+    scroll_background,
+    scroll_pipe,
+    process_nn,
+    update_player,
+    check_collision,
+    check_game_stage,
+    update_animation
 );
 
-pub fn build() -> Box<dyn UnifiedDispatcher + 'static> {
+pub fn build() -> Box<dyn UnifiedDispatcher> {
     new_dispatch()
 }

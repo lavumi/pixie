@@ -1,6 +1,3 @@
-// Re-export generic resources from engine
-pub use pixie::resources::*;
-
 pub use score::Score;
 pub use game_stage::GameFinished;
 pub use gene_handler::GeneHandler;

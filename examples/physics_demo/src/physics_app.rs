@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use specs::{Join, World, WorldExt, Builder};
+use hecs::World;
 use winit::event::{WindowEvent, ElementState, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Camera, DeltaTime, Transform, Tile, Gravity};
+use pixie::{Application, Camera, DeltaTime, Transform, Tile, Gravity, ResourceContainer};
 use pixie::{RigidBody, Velocity, Force, CircleCollider, BodyType, BoxCollider};
 use pixie::renderer::{TileRenderData, TextRenderData};
 
@@ -60,22 +60,14 @@ impl Default for PhysicsApp {
 }
 
 impl Application for PhysicsApp {
-    fn init(&mut self, world: &mut World) {
-        // Register components
-        world.register::<Transform>();
-        world.register::<Tile>();
-        world.register::<RigidBody>();
-        world.register::<Velocity>();
-        world.register::<Force>();
-        world.register::<CircleCollider>();
-        world.register::<BoxCollider>();
+    fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
+        // In hecs, we don't need to register components
 
         // Insert resources
         let aspect_ratio = config::SCREEN_SIZE[0] as f32 / config::SCREEN_SIZE[1] as f32;
-        world.insert(Camera::init_orthographic(15, aspect_ratio));
-        world.insert(DeltaTime(0.0));
-        world.insert(Gravity::default());
-
+        resources.insert(Camera::init_orthographic(15, aspect_ratio));
+        resources.insert(DeltaTime(0.0));
+        resources.insert(Gravity::default());
 
         // Create boundaries (static walls)
         self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0);   // Bottom
@@ -83,13 +75,13 @@ impl Application for PhysicsApp {
         self.create_boundary(world, -config::BOX_SIZE[0] / 2.0 - 0.5,  -5.5, 1.0, config::BOX_SIZE[1]);   // Left
         self.create_boundary(world, config::BOX_SIZE[0] / 2.0 + 0.5, -5.5, 1.0, config::BOX_SIZE[1]);    // Right
 
-
-
         self.start_ball_shooting();
         log::info!("Physics demo initialized - 10 balls + 4 walls created");
     }
 
-    fn update(&mut self, world: &mut World, dt: f32) {
+    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, dt: f32) {
+        resources.insert(DeltaTime(dt));
+
         // Handle ball shooting sequence
         if matches!(self.ball_state, BallState::Shooting) {
             self.process_ball_shooting(world, dt);
@@ -98,7 +90,7 @@ impl Application for PhysicsApp {
 
     // No dispatcher building in app anymore
 
-    fn handle_input(&mut self, world: &mut World, event: &WindowEvent) -> bool {
+    fn handle_input(&mut self, world: &mut World, _resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
                 // Only allow shooting when in Ready state
@@ -141,18 +133,15 @@ impl Application for PhysicsApp {
         }
     }
 
-    fn get_camera_uniform(&self, world: &World) -> [[f32; 4]; 4] {
-        let camera = world.read_resource::<Camera>();
+    fn get_camera_uniform(&self, _world: &World, resources: &ResourceContainer) -> [[f32; 4]; 4] {
+        let camera = resources.get::<Camera>().expect("Camera resource not found");
         camera.get_view_proj()
     }
 
-    fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>> {
-        let transforms = world.read_storage::<Transform>();
-        let tiles = world.read_storage::<Tile>();
-
+    fn get_tile_instances(&self, world: &World, _resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>> {
         let mut instances = HashMap::new();
 
-        for (transform, tile) in (&transforms, &tiles).join() {
+        for (_entity, (transform, tile)) in world.query::<(&Transform, &Tile)>().iter() {
             instances
                 .entry(tile.atlas.clone())
                 .or_insert_with(Vec::new)
@@ -166,64 +155,57 @@ impl Application for PhysicsApp {
         instances
     }
 
-    fn get_text_instances(&self, _world: &World) -> Vec<TextRenderData> {
+    fn get_text_instances(&self, _world: &World, _resources: &ResourceContainer) -> Vec<TextRenderData> {
         vec![]
     }
 }
 
 impl PhysicsApp {
     fn create_boundary(&self, world: &mut World, x: f32, y: f32, width: f32, height: f32) {
-        world.create_entity()
-            .with(Transform {
+        world.spawn((
+            Transform {
                 position: [x, y, 0.5],
                 size: [width, height],
-            })
-            .with(Tile {
+            },
+            Tile {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "box".to_string(),
-            })
-            .with(RigidBody {
+            },
+            RigidBody {
                 body_type: BodyType::Static,
                 mass: f32::INFINITY,
                 restitution: 0.9,
-            })
-            .with(Velocity::default())
-            .with(Force::default())
-            .with(BoxCollider { width: width, height: height })
-            .build();
+            },
+            Velocity::default(),
+            Force::default(),
+            BoxCollider { width, height },
+        ));
     }
 
     fn reset(&mut self, world: &mut World) {
-        use specs::Join;
-
         // Reset ball state FIRST to stop any ongoing shooting
         self.ball_state = BallState::Ready;
         self.balls_to_shoot.clear();
         self.shot_index = 0;
         self.shoot_timer = 0.0;
 
-        let to_delete: Vec<_> = {
-            let entities = world.entities();
-            let bodies = world.read_storage::<RigidBody>();
-
-            (&entities, &bodies)
-                .join()
-                .filter(|(_, body)| body.body_type == BodyType::Dynamic)
-                .map(|(entity, _)| entity)
-                .collect()
-        };
+        // Collect entities to delete (can't delete while iterating)
+        let to_delete: Vec<hecs::Entity> = world
+            .query::<&RigidBody>()
+            .iter()
+            .filter(|(_, body)| body.body_type == BodyType::Dynamic)
+            .map(|(entity, _)| entity)
+            .collect();
 
         log::info!("Deleting {} dynamic entities", to_delete.len());
 
         for entity in to_delete {
-            if let Err(e) = world.delete_entity(entity) {
+            if let Err(e) = world.despawn(entity) {
                 log::error!("Failed to delete entity: {:?}", e);
             }
         }
 
         self.start_ball_shooting();
-
-        world.maintain();
 
         log::info!("Physics demo reset complete - state: {:?}", self.ball_state);
     }
@@ -276,68 +258,68 @@ impl PhysicsApp {
         // Mass proportional to area (radius²) for 2D physics
         let mass = self.ball_mass * (radius * radius) / (0.5 * 0.5);
 
-        world.create_entity()
-            .with(Transform {
+        world.spawn((
+            Transform {
                 position: [pos[0], pos[1], 0.5],
                 size: [ball_size, ball_size],
-            })
-            .with(Tile {
+            },
+            Tile {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
-            })
-            .with(RigidBody {
+            },
+            RigidBody {
                 body_type: BodyType::Dynamic,
                 mass,
                 restitution: self.ball_restitution,
-            })
-            .with(Velocity {
+            },
+            Velocity {
                 linear: [velocity_x, velocity_y],
                 angular: 0.0,
-            })
-            .with(Force::default())
-            .with(CircleCollider { radius })
-            .build();
-        world.create_entity()
-            .with(Transform {
+            },
+            Force::default(),
+            CircleCollider { radius },
+        ));
+        world.spawn((
+            Transform {
                 position: [pos[0]+ ball_size * 0.5, pos[1] - ball_size, 0.5],
                 size: [ball_size, ball_size],
-            })
-            .with(Tile {
+            },
+            Tile {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
-            })
-            .with(RigidBody {
+            },
+            RigidBody {
                 body_type: BodyType::Dynamic,
                 mass,
                 restitution: self.ball_restitution,
-            })
-            .with(Velocity {
+            },
+            Velocity {
                 linear: [velocity_x, velocity_y],
                 angular: 0.0,
-            })
-            .with(Force::default())
-            .with(CircleCollider { radius })
-            .build();
-        world.create_entity()
-            .with(Transform {
+            },
+            Force::default(),
+            CircleCollider { radius },
+        ));
+        world.spawn((
+            Transform {
                 position: [pos[0]- ball_size * 0.5, pos[1] + ball_size, 0.5],
                 size: [ball_size, ball_size],
-            })
-            .with(Tile {
+            },
+            Tile {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
-            })
-            .with(RigidBody {
+            },
+            RigidBody {
                 body_type: BodyType::Dynamic,
                 mass,
                 restitution: self.ball_restitution,
-            })
-            .with(Velocity {
+            },
+            Velocity {
                 linear: [velocity_x, velocity_y],
                 angular: 0.0,
-            })
-            .with(Force::default())
-            .with(CircleCollider { radius })
-            .build();
+            },
+            Force::default(),
+            CircleCollider { radius },
+        ));
     }
 }

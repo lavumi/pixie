@@ -1,19 +1,14 @@
-use specs::{ReadStorage, System, Write};
+use hecs::World;
+use pixie::ResourceContainer;
+
 use crate::components::Player;
+use crate::resources::GameFinished;
 
-use crate::resources::{GameFinished};
+/// Check if game should end (no players left)
+pub fn check_game_stage(world: &mut World, resources: &mut ResourceContainer) {
+    let player_count = world.query::<&Player>().iter().count();
 
-pub struct CheckGameStage;
-
-impl<'a> System<'a> for CheckGameStage {
-    type SystemData = (
-        Write<'a, GameFinished>,
-        ReadStorage<'a, Player>
-    );
-
-    fn run(&mut self, (mut stage, players): Self::SystemData) {
-        if players.is_empty() {
-            *stage = GameFinished(true);
-        }
+    if player_count == 0 {
+        resources.insert(GameFinished(true));
     }
 }

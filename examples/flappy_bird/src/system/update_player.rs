@@ -1,35 +1,29 @@
-use specs::{Join, Read, System, WriteStorage};
+use hecs::World;
+use pixie::ResourceContainer;
 
-use crate::components::{ Player, Transform};
+use crate::components::{Player, Transform};
 use crate::game_configs::{GRAVITY, JUMP_FORCE};
-use crate::resources::{DeltaTime, InputHandler};
+use pixie::DeltaTime;
 use crate::flappy_app::Stage;
 
-pub struct UpdatePlayer;
+/// Update player physics - applies gravity and jump force
+pub fn update_player(world: &mut World, resources: &mut ResourceContainer) {
+    let dt = resources.get::<DeltaTime>().expect("DeltaTime resource not found");
+    let stage = resources.get::<Stage>().expect("Stage resource not found");
 
-impl<'a> System<'a> for UpdatePlayer {
-    type SystemData = (
-        WriteStorage<'a, Player>,
-        WriteStorage<'a, Transform>,
-        Read<'a, InputHandler>,
-        Read<'a, DeltaTime>,
-        Read<'a, Stage>
-    );
+    // Only run when game is in Run stage
+    if *stage != Stage::Run {
+        return;
+    }
 
-    fn run(&mut self, (mut players, mut tf, _, dt, stage): Self::SystemData) {
-        // Only run when game is in Run stage
-        if *stage != Stage::Run {
-            return;
-        }
-        for ( player, transform) in ( &mut players, &mut tf).join() {
-            player.force = if player.jump {
-                player.jump = false;
-                JUMP_FORCE * dt.0
-            } else {
-                player.force - GRAVITY * dt.0
-            };
+    for (_entity, (player, transform)) in world.query_mut::<(&mut Player, &mut Transform)>() {
+        player.force = if player.jump {
+            player.jump = false;
+            JUMP_FORCE * dt.0
+        } else {
+            player.force - GRAVITY * dt.0
+        };
 
-            transform.position[1] += player.force;
-        }
+        transform.position[1] += player.force;
     }
 }

@@ -10,18 +10,19 @@ use winit::{
 };
 use std::sync::Arc;
 use std::collections::HashMap;
-use specs::{World, WorldExt};
+use hecs::World;
 
 use crate::application::Application;
 use crate::renderer::*;
 use crate::dispatcher::UnifiedDispatcher;
-use crate::resources::DeltaTime;
+use crate::resources::{DeltaTime, ResourceContainer};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
 
 pub struct Engine<A: Application> {
     app: A,
     world: World,
+    resources: ResourceContainer,
     rs: Option<RenderState>,
     dispatcher: Box<dyn UnifiedDispatcher + 'static>,
     window: Option<Arc<Window>>,
@@ -105,7 +106,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
     fn window_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, window_id: winit::window::WindowId, event: WindowEvent) {
         if let Some(window) = &self.window { if window_id == window.id() {
             // Try application input first
-            if !self.app.handle_input(&mut self.world, &event) {
+            if !self.app.handle_input(&mut self.world, &mut self.resources, &event) {
                 match event {
                     WindowEvent::CloseRequested => event_loop.exit(),
                     WindowEvent::KeyboardInput { event: key_event, .. } => {
@@ -144,13 +145,13 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                         // Accumulate time for fixed-step updates
                         self.accumulator += elapsed_time;
                         while self.accumulator >= self.fixed_dt {
-                            // Provide fixed dt to systems and step dispatcher
-                            {
-                                let mut delta = self.world.write_resource::<DeltaTime>();
-                                *delta = DeltaTime(self.fixed_dt);
+                            // Check if app wants to run fixed updates
+                            if self.app.should_run_fixed(&self.world, &self.resources) {
+                                // Provide fixed dt to systems and step dispatcher
+                                self.resources.insert(DeltaTime(self.fixed_dt));
+                                self.app.fixed_update(&mut self.world, &mut self.resources, self.fixed_dt);
+                                self.dispatcher.run_now(&mut self.world, &mut self.resources);
                             }
-                            self.dispatcher.run_now(&mut self.world);
-                            self.world.maintain();
                             self.accumulator -= self.fixed_dt;
                         }
 
@@ -188,17 +189,17 @@ impl<A: Application> Engine<A> {
         let accumulator = 0.0f32;
         let fixed_dt = 1.0 / 60.0; // 60 Hz physics
 
-        // Initialize World
+        // Initialize World and Resources
         let mut world = World::new();
+        let mut resources = ResourceContainer::new();
 
         // Initialize application
-        app.init(&mut world);
-
-
+        app.init(&mut world, &mut resources);
 
         let engine = Self {
             app,
             world,
+            resources,
             rs: None,
             dispatcher,
             window: None,
@@ -213,7 +214,7 @@ impl<A: Application> Engine<A> {
             #[cfg(target_arch = "wasm32")]
             wasm_pending_rs: None,
         };
-        
+
         (engine, event_loop)
     }
 
@@ -235,16 +236,18 @@ impl<A: Application> Engine<A> {
     ) {
         let event_loop = EventLoop::new().unwrap();
 
-        // Initialize World
+        // Initialize World and Resources
         let mut world = World::new();
+        let mut resources = ResourceContainer::new();
 
         // Initialize application
         let mut app = app;
-        app.init(&mut world);
+        app.init(&mut world, &mut resources);
 
         let mut engine = Self {
             app,
             world,
+            resources,
             rs: None,
             dispatcher,
             window: None,
@@ -274,21 +277,21 @@ impl<A: Application> Engine<A> {
     }
 
     fn update(&mut self, dt: f32) {
-        self.app.update(&mut self.world, dt);
+        self.app.update(&mut self.world, &mut self.resources, dt);
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let rs = match &mut self.rs { Some(rs) => rs, None => return Ok(()) };
         // 1. Update camera
-        let camera_uniform = self.app.get_camera_uniform(&self.world);
+        let camera_uniform = self.app.get_camera_uniform(&self.world, &self.resources);
         rs.update_camera_buffer(camera_uniform);
 
         // 2. Update meshes
-        let instances = self.app.get_tile_instances(&self.world);
+        let instances = self.app.get_tile_instances(&self.world, &self.resources);
         rs.update_mesh_instance(instances);
 
         // 3. Update text
-        let text_instances = self.app.get_text_instances(&self.world);
+        let text_instances = self.app.get_text_instances(&self.world, &self.resources);
         rs.update_text_instance(text_instances);
 
         rs.render()

@@ -1,17 +1,17 @@
-use specs::{System, Write};
+use hecs::World;
+use crate::resources::ResourceContainer;
 
-use crate::resources::Camera;
-
-pub struct UpdateCamera;
-
-impl<'a> System<'a> for UpdateCamera {
-    type SystemData = (
-        Write<'a, Camera>,
-    );
-
-    fn run(&mut self, _: Self::SystemData) {
-        // let ( mut camera) = data;
-        // let player_pos = [pos.0, pos.1];
-        // camera.move_camera(player_pos);
-    }
+/// Update camera system - currently a no-op placeholder
+/// Can be used to implement camera following logic
+pub fn update_camera(_world: &mut World, _resources: &mut ResourceContainer) {
+    // Placeholder for camera update logic
+    // Example: Follow player entity
+    // let camera = resources.get_mut::<Camera>().unwrap();
+    // if let Some((_, (transform,))) = world.query_mut::<(&Transform,)>()
+    //     .with::<Player>()
+    //     .into_iter()
+    //     .next()
+    // {
+    //     camera.move_camera([transform.position[0], transform.position[1]]);
+    // }
 }

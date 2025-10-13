@@ -1,7 +1,8 @@
-use specs::{Join, System, WriteStorage, ReadStorage, Read};
+use hecs::World;
 use crate::components::{Force, RigidBody, BodyType};
+use crate::resources::ResourceContainer;
 
-// Gravity resource
+/// Gravity resource
 pub struct Gravity {
     pub value: [f32; 2],
 }
@@ -14,27 +15,16 @@ impl Default for Gravity {
     }
 }
 
-pub struct ApplyGravity;
+/// Apply gravity system - adds gravitational force to dynamic bodies
+pub fn apply_gravity(world: &mut World, resources: &mut ResourceContainer) {
+    let gravity = resources.get::<Gravity>()
+        .expect("Gravity resource not found");
 
-impl Default for ApplyGravity {
-    fn default() -> Self {
-        ApplyGravity
-    }
-}
-
-impl<'a> System<'a> for ApplyGravity {
-    type SystemData = (
-        WriteStorage<'a, Force>,
-        ReadStorage<'a, RigidBody>,
-        Read<'a, Gravity>,
-    );
-
-    fn run(&mut self, (mut forces, bodies, gravity): Self::SystemData) {
-        for (force, body) in (&mut forces, &bodies).join() {
-            if body.body_type == BodyType::Dynamic {
-                force.linear[0] += gravity.value[0] * body.mass;
-                force.linear[1] += gravity.value[1] * body.mass;
-            }
+    // Query for entities with Force and RigidBody components
+    for (_entity, (force, body)) in world.query_mut::<(&mut Force, &RigidBody)>() {
+        if body.body_type == BodyType::Dynamic {
+            force.linear[0] += gravity.value[0] * body.mass;
+            force.linear[1] += gravity.value[1] * body.mass;
         }
     }
 }

@@ -1,13 +1,13 @@
 // Re-export generic systems from engine
-pub use pixie::systems::*;
+use pixie::systems::*;
 pub use pixie::dispatcher::UnifiedDispatcher;
 
 // Define physics demo system execution order
 pixie::construct_dispatcher!(
-    (UpdateCamera, "update_camera", &[]),
-    (ApplyGravity, "apply_gravity", &[]),
-    (UpdatePhysics, "update_physics", &["apply_gravity"]),
-    (CollisionSystem, "collision", &["update_physics"])
+    update_camera,
+    apply_gravity,
+    update_physics,
+    collision_system
 );
 
 pub fn build() -> Box<dyn UnifiedDispatcher + 'static> {

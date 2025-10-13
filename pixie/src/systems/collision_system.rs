@@ -1,10 +1,11 @@
-use specs::{Join, System, WriteStorage, ReadStorage, Entities};
+use hecs::{World, Entity};
 use crate::components::{Transform, Velocity, RigidBody, CircleCollider, BoxCollider, BodyType};
+use crate::resources::ResourceContainer;
 
 #[derive(Debug, Clone)]
 pub struct CollisionInfo {
-    pub entity1: specs::Entity,
-    pub entity2: specs::Entity,
+    pub entity1: Entity,
+    pub entity2: Entity,
     pub normal: [f32; 2],
     pub penetration: f32,
     pub contact_point: [f32; 2],
@@ -15,78 +16,8 @@ pub struct CollisionInfo {
     pub body_type2: BodyType,
 }
 
-pub struct CollisionSystem;
-
-impl<'a> System<'a> for CollisionSystem {
-    type SystemData = (
-        Entities<'a>,
-        WriteStorage<'a, Transform>,
-        WriteStorage<'a, Velocity>,
-        ReadStorage<'a, RigidBody>,
-        ReadStorage<'a, CircleCollider>,
-        ReadStorage<'a, BoxCollider>,
-    );
-
-    fn run(&mut self, (entities, mut transforms, mut velocities, bodies, circle_colliders, box_colliders): Self::SystemData) {
-        // Collision iteration for stability
-        const ITERATIONS: usize = 8;
-        
-        for _ in 0..ITERATIONS {
-            let mut collisions = Vec::new();
-
-            // Collect entity data more efficiently
-            let mut entity_data = Vec::new();
-            
-            for (entity, transform, body, collider) in (&entities, &transforms, &bodies, &circle_colliders).join() {
-                entity_data.push(EntityCollisionData {
-                    entity,
-                    position: [transform.position[0], transform.position[1]],
-                    mass: body.mass,
-                    restitution: body.restitution,
-                    body_type: body.body_type,
-                    collider: ColliderType::Circle { radius: collider.radius },
-                });
-            }
-            
-            for (entity, transform, body, collider) in (&entities, &transforms, &bodies, &box_colliders).join() {
-                entity_data.push(EntityCollisionData {
-                    entity,
-                    position: [transform.position[0], transform.position[1]],
-                    mass: body.mass,
-                    restitution: body.restitution,
-                    body_type: body.body_type,
-                    collider: ColliderType::Box { 
-                        width: collider.width, 
-                        height: collider.height 
-                    },
-                });
-            }
-
-            // Detect collisions
-            for i in 0..entity_data.len() {
-                for j in (i + 1)..entity_data.len() {
-                    let data1 = &entity_data[i];
-                    let data2 = &entity_data[j];
-
-                    // Skip if both are static
-                    if data1.body_type == BodyType::Static && data2.body_type == BodyType::Static {
-                        continue;
-                    }
-
-                    if let Some(collision) = detect_collision(data1, data2) {
-                        collisions.push(collision);
-                    }
-                }
-            }
-
-            // Resolve collisions
-            resolve_collisions(&mut transforms, &mut velocities, collisions);
-        }
-    }
-}
-
 struct EntityCollisionData {
-    entity: specs::Entity,
+    entity: Entity,
     position: [f32; 2],
     mass: f32,
     restitution: f32,
@@ -97,6 +28,66 @@ struct EntityCollisionData {
 enum ColliderType {
     Circle { radius: f32 },
     Box { width: f32, height: f32 },
+}
+
+/// Collision system - detects and resolves collisions between rigid bodies
+pub fn collision_system(world: &mut World, _resources: &mut ResourceContainer) {
+    // Collision iteration for stability
+    const ITERATIONS: usize = 8;
+
+    for _ in 0..ITERATIONS {
+        let mut collisions = Vec::new();
+
+        // Collect entity data
+        let mut entity_data = Vec::new();
+
+        // Collect circle collider entities
+        for (entity, (transform, body, collider)) in world.query::<(&Transform, &RigidBody, &CircleCollider)>().iter() {
+            entity_data.push(EntityCollisionData {
+                entity,
+                position: [transform.position[0], transform.position[1]],
+                mass: body.mass,
+                restitution: body.restitution,
+                body_type: body.body_type,
+                collider: ColliderType::Circle { radius: collider.radius },
+            });
+        }
+
+        // Collect box collider entities
+        for (entity, (transform, body, collider)) in world.query::<(&Transform, &RigidBody, &BoxCollider)>().iter() {
+            entity_data.push(EntityCollisionData {
+                entity,
+                position: [transform.position[0], transform.position[1]],
+                mass: body.mass,
+                restitution: body.restitution,
+                body_type: body.body_type,
+                collider: ColliderType::Box {
+                    width: collider.width,
+                    height: collider.height
+                },
+            });
+        }
+
+        // Detect collisions
+        for i in 0..entity_data.len() {
+            for j in (i + 1)..entity_data.len() {
+                let data1 = &entity_data[i];
+                let data2 = &entity_data[j];
+
+                // Skip if both are static
+                if data1.body_type == BodyType::Static && data2.body_type == BodyType::Static {
+                    continue;
+                }
+
+                if let Some(collision) = detect_collision(data1, data2) {
+                    collisions.push(collision);
+                }
+            }
+        }
+
+        // Resolve collisions
+        resolve_collisions(world, collisions);
+    }
 }
 
 fn detect_collision(data1: &EntityCollisionData, data2: &EntityCollisionData) -> Option<CollisionInfo> {
@@ -132,7 +123,7 @@ fn detect_circle_circle(
         let distance = distance_squared.sqrt();
         let penetration = min_distance - distance;
         let normal = [dx / distance, dy / distance];
-        
+
         Some(CollisionInfo {
             entity1: data1.entity,
             entity2: data2.entity,
@@ -182,15 +173,13 @@ fn detect_circle_box(
 
     if distance_squared < radius * radius {
         let distance = distance_squared.sqrt();
-        // let normal = [dx / distance, dy / distance];
-        // let penetration = radius - distance;
-        // (normal, penetration)
+
         // Handle case where circle center is inside box
         let (normal, penetration) = if distance < -0.0001 {
             // Circle center is inside box - push along closest axis
             let overlap_x = half_width - (circle_data.position[0] - box_data.position[0]).abs();
             let overlap_y = half_height - (circle_data.position[1] - box_data.position[1]).abs();
-            
+
             if overlap_x < overlap_y {
                 let dir = if circle_data.position[0] < box_data.position[0] { -1.0 } else { 1.0 };
                 ([dir, 0.0], radius + overlap_x)
@@ -231,14 +220,14 @@ fn detect_box_circle(
 ) -> Option<CollisionInfo> {
     // Reuse circle-box detection but flip the result
     let mut collision = detect_circle_box(circle_data, box_data, radius, box_width, box_height)?;
-    
+
     // Swap entities and flip normal
     std::mem::swap(&mut collision.entity1, &mut collision.entity2);
     std::mem::swap(&mut collision.mass1, &mut collision.mass2);
     std::mem::swap(&mut collision.body_type1, &mut collision.body_type2);
     collision.normal[0] = -collision.normal[0];
     collision.normal[1] = -collision.normal[1];
-    
+
     Some(collision)
 }
 
@@ -298,8 +287,7 @@ fn detect_box_box(
 }
 
 fn resolve_collisions(
-    transforms: &mut WriteStorage<Transform>,
-    velocities: &mut WriteStorage<Velocity>,
+    world: &mut World,
     collisions: Vec<CollisionInfo>,
 ) {
     const CORRECTION_PERCENT: f32 = 1.2;  // Increase position correction even more
@@ -311,9 +299,9 @@ fn resolve_collisions(
         }
 
         let normal = collision.normal;
-        
+
         // Position correction
-        let correction = ((collision.penetration - SLOP).max(0.0) * CORRECTION_PERCENT) / 
+        let correction = ((collision.penetration - SLOP).max(0.0) * CORRECTION_PERCENT) /
             match (collision.body_type1, collision.body_type2) {
                 (BodyType::Dynamic, BodyType::Dynamic) => {
                     1.0 / collision.mass1 + 1.0 / collision.mass2
@@ -323,43 +311,48 @@ fn resolve_collisions(
                 _ => continue,
             };
 
+        // Apply position corrections
         match (collision.body_type1, collision.body_type2) {
             (BodyType::Dynamic, BodyType::Dynamic) => {
                 let ratio1 = (1.0 / collision.mass1) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
                 let ratio2 = (1.0 / collision.mass2) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
-                
-                if let Some(t1) = transforms.get_mut(collision.entity1) {
-                    t1.position[0] -= normal[0] * correction * ratio1;
-                    t1.position[1] -= normal[1] * correction * ratio1;
+
+                if let Ok(mut transform) = world.get::<&mut Transform>(collision.entity1) {
+                    transform.position[0] -= normal[0] * correction * ratio1;
+                    transform.position[1] -= normal[1] * correction * ratio1;
                 }
-                if let Some(t2) = transforms.get_mut(collision.entity2) {
-                    t2.position[0] += normal[0] * correction * ratio2;
-                    t2.position[1] += normal[1] * correction * ratio2;
+                if let Ok(mut transform) = world.get::<&mut Transform>(collision.entity2) {
+                    transform.position[0] += normal[0] * correction * ratio2;
+                    transform.position[1] += normal[1] * correction * ratio2;
                 }
             }
             (BodyType::Dynamic, BodyType::Static) => {
-                if let Some(t1) = transforms.get_mut(collision.entity1) {
-                    t1.position[0] -= normal[0] * correction;
-                    t1.position[1] -= normal[1] * correction;
+                if let Ok(mut transform) = world.get::<&mut Transform>(collision.entity1) {
+                    transform.position[0] -= normal[0] * correction;
+                    transform.position[1] -= normal[1] * correction;
                 }
             }
             (BodyType::Static, BodyType::Dynamic) => {
-                if let Some(t2) = transforms.get_mut(collision.entity2) {
-                    t2.position[0] += normal[0] * correction;
-                    t2.position[1] += normal[1] * correction;
+                if let Ok(mut transform) = world.get::<&mut Transform>(collision.entity2) {
+                    transform.position[0] += normal[0] * correction;
+                    transform.position[1] += normal[1] * correction;
                 }
             }
             _ => {}
         }
 
-        // Velocity resolution
-        let vel1 = velocities.get(collision.entity1);
-        let vel2 = velocities.get(collision.entity2);
+        // Velocity resolution - need to get velocities first to calculate relative velocity
+        let vel1_linear = world.get::<&Velocity>(collision.entity1)
+            .ok()
+            .map(|v| v.linear);
+        let vel2_linear = world.get::<&Velocity>(collision.entity2)
+            .ok()
+            .map(|v| v.linear);
 
-        if let (Some(v1), Some(v2)) = (vel1, vel2) {
+        if let (Some(v1_linear), Some(v2_linear)) = (vel1_linear, vel2_linear) {
             let relative_vel = [
-                v2.linear[0] - v1.linear[0],
-                v2.linear[1] - v1.linear[1],
+                v2_linear[0] - v1_linear[0],
+                v2_linear[1] - v1_linear[1],
             ];
             let vel_along_normal = relative_vel[0] * normal[0] + relative_vel[1] * normal[1];
 
@@ -368,7 +361,7 @@ fn resolve_collisions(
                 continue;
             }
 
-            let impulse_scalar = -(1.0 + collision.restitution) * vel_along_normal / 
+            let impulse_scalar = -(1.0 + collision.restitution) * vel_along_normal /
                 match (collision.body_type1, collision.body_type2) {
                     (BodyType::Dynamic, BodyType::Dynamic) => {
                         1.0 / collision.mass1 + 1.0 / collision.mass2
@@ -381,16 +374,16 @@ fn resolve_collisions(
             let impulse = [impulse_scalar * normal[0], impulse_scalar * normal[1]];
 
             if collision.body_type1 == BodyType::Dynamic {
-                if let Some(v1) = velocities.get_mut(collision.entity1) {
-                    v1.linear[0] -= impulse[0] / collision.mass1;
-                    v1.linear[1] -= impulse[1] / collision.mass1;
+                if let Ok(mut velocity) = world.get::<&mut Velocity>(collision.entity1) {
+                    velocity.linear[0] -= impulse[0] / collision.mass1;
+                    velocity.linear[1] -= impulse[1] / collision.mass1;
                 }
             }
 
             if collision.body_type2 == BodyType::Dynamic {
-                if let Some(v2) = velocities.get_mut(collision.entity2) {
-                    v2.linear[0] += impulse[0] / collision.mass2;
-                    v2.linear[1] += impulse[1] / collision.mass2;
+                if let Ok(mut velocity) = world.get::<&mut Velocity>(collision.entity2) {
+                    velocity.linear[0] += impulse[0] / collision.mass2;
+                    velocity.linear[1] += impulse[1] / collision.mass2;
                 }
             }
         }
