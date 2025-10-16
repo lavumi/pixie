@@ -1,7 +1,9 @@
 use crate::renderer::mesh::InstanceTileRaw;
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct TextRenderData {
-    pub content: String,
+    pub content: Arc<String>,  // Arc makes clone O(1) instead of O(n)
     pub color : [f32;3],
     pub position: [f32; 3],
     pub size: [f32; 2],

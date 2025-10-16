@@ -10,14 +10,20 @@ use winit::{
 };
 use std::sync::Arc;
 use std::collections::HashMap;
-use hecs::World;
+use hecs::{World, Entity};
 
 use crate::application::Application;
 use crate::renderer::*;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::resources::{DeltaTime, ResourceContainer};
+use crate::components::{Transform, Tile, Text, TextStyle};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
+
+struct CachedText {
+    version: u64,
+    render_data: TextRenderData,
+}
 
 pub struct Engine<A: Application> {
     app: A,
@@ -30,6 +36,11 @@ pub struct Engine<A: Application> {
     prev_time: Instant,
     accumulator: f32,
     fixed_dt: f32,
+
+    // Text rendering cache with version tracking
+    text_cache: HashMap<Entity, CachedText>,
+    text_render_buffer: Vec<TextRenderData>,  // Reusable buffer
+    cache_cleanup_counter: u32,  // Periodic cleanup
 
     // bootstrap config for ActiveEventLoop window creation
     title: String,
@@ -212,6 +223,9 @@ impl<A: Application> Engine<A> {
             prev_time,
             accumulator,
             fixed_dt,
+            text_cache: HashMap::new(),
+            text_render_buffer: Vec::with_capacity(128),  // Pre-allocate for typical case
+            cache_cleanup_counter: 0,
             title: title.into(),
             initial_width: width,
             initial_height: height,
@@ -265,6 +279,9 @@ impl<A: Application> Engine<A> {
             prev_time: Instant::now(),
             accumulator: 0.0,
             fixed_dt: 1.0 / 60.0,
+            text_cache: HashMap::new(),
+            text_render_buffer: Vec::with_capacity(128),
+            cache_cleanup_counter: 0,
             title: title.into(),
             initial_width: width,
             initial_height: height,
@@ -301,14 +318,72 @@ impl<A: Application> Engine<A> {
         };
         rs.update_camera_buffer(camera_uniform);
 
-        // 2. Update meshes
-        let instances = self.app.get_tile_instances(&self.world, &self.resources);
+        // 2. Collect tile instances directly from world
+        let instances = {
+            let mut instances = HashMap::new();
+            for (_entity, (transform, tile)) in self.world.query::<(&Transform, &Tile)>().iter() {
+                instances
+                    .entry(tile.atlas.clone())
+                    .or_insert_with(Vec::new)
+                    .push(TileRenderData {
+                        position: transform.position,
+                        size: transform.size,
+                        uv: tile.uv,
+                    });
+            }
+            instances
+        };
         rs.update_mesh_instance(instances);
 
-        // 3. Update text
-        let text_instances = self.app.get_text_instances(&self.world, &self.resources);
-        rs.update_text_instance(text_instances);
+        // 3. Collect text instances from ECS with version-based caching
+        self.text_render_buffer.clear();  // Reuse allocation
+
+        // Update cache with changed texts (read-only query, can parallelize)
+        for (entity, (transform, text, style)) in self.world.query::<(&Transform, &Text, &TextStyle)>().iter() {
+            // Check cache: does it exist and is version up-to-date?
+            let needs_update = match self.text_cache.get(&entity) {
+                Some(cached) => cached.version != text.version,
+                None => true,
+            };
+
+            if needs_update {
+                let render_data = TextRenderData {
+                    content: std::sync::Arc::new(text.content.clone()),  // Arc for cheap cloning
+                    position: [transform.position[0], transform.position[1], style.z_index],
+                    size: style.size,
+                    color: style.color,
+                };
+                self.text_cache.insert(entity, CachedText {
+                    version: text.version,
+                    render_data,
+                });
+            }
+
+            // Collect render data (cheap clone of primitives + Arc-wrapped String would be better)
+            if let Some(cached) = self.text_cache.get(&entity) {
+                self.text_render_buffer.push(cached.render_data.clone());
+            }
+        }
+
+        // Periodic cleanup of deleted entities (not every frame)
+        self.cache_cleanup_counter += 1;
+        if self.cache_cleanup_counter >= 60 {  // Cleanup once per second at 60fps
+            self.cache_cleanup_counter = 0;
+
+            // Collect all valid entities
+            let valid_entities: std::collections::HashSet<Entity> =
+                self.world.query::<&Text>()
+                    .iter()
+                    .map(|(entity, _)| entity)
+                    .collect();
+
+            // Remove stale cache entries
+            self.text_cache.retain(|entity, _| valid_entities.contains(entity));
+        }
+
+        rs.update_text_instance(self.text_render_buffer.clone());
 
         rs.render()
     }
+
 }

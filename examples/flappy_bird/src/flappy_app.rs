@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use rand::rngs::ThreadRng;
 use hecs::World;
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, ResourceContainer};
-use pixie::renderer::{TileRenderData, TextRenderData};
+use pixie::{Application, ResourceContainer, Transform, Text, TextStyle};
 
 use crate::builder::{background, pipe, ai_player_with_resources};
 use crate::components::*;
@@ -23,20 +21,156 @@ impl Default for Stage {
     }
 }
 
-pub struct FlappyApplication { stage: Stage }
+pub struct FlappyApplication {
+    stage: Stage,
+    stats_text_entity: Option<hecs::Entity>,
+    instruction_text_entity: Option<hecs::Entity>,
+}
 
 impl Default for FlappyApplication {
     fn default() -> Self {
         FlappyApplication {
             stage: Stage::Ready,
+            stats_text_entity: None,
+            instruction_text_entity: None,
         }
+    }
+}
+
+impl Application for FlappyApplication {
+    fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
+        // In hecs, we don't need to register components
+
+        // Set camera zoom for flappy bird
+        if let Some(camera) = resources.get_mut::<pixie::Camera>() {
+            camera.set_zoom(9.0);
+        }
+
+        // Insert resources (Camera and DeltaTime are created automatically by Engine)
+        resources.insert(GameFinished(false));
+        resources.insert(ThreadRng::default());
+        resources.insert(Score::default());
+        resources.insert(GeneHandler::default());
+        resources.insert(self.stage);
+
+        // Create text entities
+        self.stats_text_entity = Some(world.spawn((
+            Transform {
+                position: [-4.5, 8.5, 0.0],
+                size: [1.0, 1.0],
+            },
+            Text {
+                content: "Generation: 0\nScore: 0.000\nSurvive: 0".to_string(),
+                version: 1,
+            },
+            TextStyle {
+                size: [0.5, 0.5],
+                color: [0.0, 0.0, 0.0],
+                z_index: 1.0,
+            },
+        )));
+
+        self.instruction_text_entity = Some(world.spawn((
+            Transform {
+                position: [-3.0, 1.0, 0.0],
+                size: [1.0, 1.0],
+            },
+            Text {
+                content: "Press any key to start".to_string(),
+                version: 1,
+            },
+            TextStyle {
+                size: [0.5, 0.5],
+                color: [0.0, 0.0, 0.0],
+                z_index: 1.0,
+            },
+        )));
+
+        // Initialize game
+        self.init_game(world, resources);
+    }
+
+    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, _dt: f32) {
+        self.check_game_finished(resources);
+
+        if self.stage == Stage::End {
+            if let Some(gene_handler) = resources.get_mut::<GeneHandler>() {
+                gene_handler.process_generation();
+            }
+            self.init_game(world, resources);
+            self.stage = Stage::Run;
+        }
+
+        // Always update stage resource for systems to read
+        resources.insert(self.stage);
+
+        // Update text entities
+        self.update_texts(world, resources);
+    }
+
+    fn handle_input(&mut self, world: &mut World, resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::KeyboardInput { event: key_event, .. } => {
+                let physical_key = key_event.physical_key;
+                let state = key_event.state;
+
+                match self.stage {
+                    Stage::End => {
+                        if state == ElementState::Released {
+                            self.init_game(world, resources);
+                        }
+                        true
+                    }
+                    Stage::Ready | Stage::Pause => {
+                        if state == ElementState::Released {
+                            self.stage = Stage::Run;
+                        }
+                        true
+                    }
+                    Stage::Run => {
+                        match physical_key {
+                            PhysicalKey::Code(KeyCode::KeyP) => {
+                                if state == ElementState::Released {
+                                    self.stage = Stage::Pause;
+                                }
+                                true
+                            }
+                            PhysicalKey::Code(KeyCode::KeyR) => {
+                                if state == ElementState::Released {
+                                    world.clear();
+                                }
+                                true
+                            }
+                            _ => false,
+                        }
+                    }
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn should_run_fixed(&self, _world: &World, _resources: &ResourceContainer) -> bool {
+        self.stage == Stage::Run
     }
 }
 
 impl FlappyApplication {
     fn init_game(&mut self, world: &mut World, resources: &mut ResourceContainer) {
-        // Clear all entities
-        world.clear();
+        // Clear all entities except text entities
+        let text_entities = vec![self.stats_text_entity, self.instruction_text_entity]
+            .into_iter()
+            .flatten()
+            .collect::<std::collections::HashSet<_>>();
+
+        let to_delete: Vec<hecs::Entity> = world.iter()
+            .map(|entity_ref| entity_ref.entity())
+            .filter(|entity| !text_entities.contains(entity))
+            .collect();
+
+        for entity in to_delete {
+            let _ = world.despawn(entity);
+        }
 
         background(world);
         pipe(world, 16.);
@@ -92,139 +226,54 @@ impl FlappyApplication {
         let gene = gene_handler.get_alive_gene(index);
         (gene, input_data)
     }
-}
 
-impl Application for FlappyApplication {
-    fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
-        // In hecs, we don't need to register components
+    fn update_texts(&mut self, world: &mut World, resources: &ResourceContainer) {
+        // Update stats text
+        if let Some(entity) = self.stats_text_entity {
+            if let Ok(mut text) = world.get::<&mut Text>(entity) {
+                let gene_handler = resources.get::<GeneHandler>()
+                    .expect("GeneHandler resource not found");
+                let score = resources.get::<Score>()
+                    .expect("Score resource not found");
 
-        // Set camera zoom for flappy bird
-        if let Some(camera) = resources.get_mut::<pixie::Camera>() {
-            camera.set_zoom(9.0);
-        }
+                // Count players
+                let players = world.query::<&Player>().iter().count();
 
-        // Insert resources (Camera and DeltaTime are created automatically by Engine)
-        resources.insert(GameFinished(false));
-        resources.insert(ThreadRng::default());
-        resources.insert(Score::default());
-        resources.insert(GeneHandler::default());
-        resources.insert(self.stage);
+                let new_content = format!("Generation: {}\nScore: {:.3}\nSurvive: {}",
+                    gene_handler.generation, score.0, players);
 
-        // Initialize game
-        self.init_game(world, resources);
-    }
-
-    fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, _dt: f32) {
-        self.check_game_finished(resources);
-
-        if self.stage == Stage::End {
-            if let Some(gene_handler) = resources.get_mut::<GeneHandler>() {
-                gene_handler.process_generation();
+                // Use set_content helper which auto-increments version
+                text.set_content(new_content);
             }
-            self.init_game(world, resources);
-            self.stage = Stage::Run;
         }
 
-        // Always update stage resource for systems to read
-        resources.insert(self.stage);
-    }
-
-    fn handle_input(&mut self, world: &mut World, resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput { event: key_event, .. } => {
-                let physical_key = key_event.physical_key;
-                let state = key_event.state;
-
-                match self.stage {
-                    Stage::End => {
-                        if state == ElementState::Released {
-                            self.init_game(world, resources);
-                        }
-                        true
-                    }
-                    Stage::Ready | Stage::Pause => {
-                        if state == ElementState::Released {
-                            self.stage = Stage::Run;
-                        }
-                        true
-                    }
-                    Stage::Run => {
-                        match physical_key {
-                            PhysicalKey::Code(KeyCode::KeyP) => {
-                                if state == ElementState::Released {
-                                    self.stage = Stage::Pause;
-                                }
-                                true
-                            }
-                            PhysicalKey::Code(KeyCode::KeyR) => {
-                                if state == ElementState::Released {
-                                    world.clear();
-                                }
-                                true
-                            }
-                            _ => false,
-                        }
-                    }
+        // Update instruction text visibility based on stage
+        if let Some(entity) = self.instruction_text_entity {
+            // Hide/show instruction text based on stage
+            if self.stage == Stage::Ready {
+                // Make sure it exists
+                if world.get::<&Text>(entity).is_err() {
+                    // Re-spawn if it was removed
+                    self.instruction_text_entity = Some(world.spawn((
+                        Transform {
+                            position: [-3.0, 1.0, 0.0],
+                            size: [1.0, 1.0],
+                        },
+                        Text {
+                            content: "Press any key to start".to_string(),
+                            version: 1,
+                        },
+                        TextStyle {
+                            size: [0.5, 0.5],
+                            color: [0.0, 0.0, 0.0],
+                            z_index: 1.0,
+                        },
+                    )));
                 }
+            } else {
+                // Remove instruction text when not in Ready stage
+                let _ = world.despawn(entity);
             }
-            _ => false,
         }
-    }
-
-    fn get_tile_instances(&self, world: &World, _resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>> {
-        let mut tile_instance_data_hashmap = HashMap::new();
-
-        // Query for entities with Tile and Transform components
-        for (_entity, (tile, transform)) in world.query::<(&pixie::Tile, &pixie::Transform)>().iter() {
-            let atlas = tile.atlas.clone();
-            let instance = TileRenderData {
-                uv: tile.uv,
-                position: transform.position,
-                size: transform.size,
-            };
-
-            tile_instance_data_hashmap
-                .entry(atlas)
-                .or_insert_with(Vec::new)
-                .push(instance);
-        }
-
-        tile_instance_data_hashmap
-    }
-
-    fn get_text_instances(&self, world: &World, resources: &ResourceContainer) -> Vec<TextRenderData> {
-        let gene_handler = resources.get::<GeneHandler>()
-            .expect("GeneHandler resource not found");
-        let score = resources.get::<Score>()
-            .expect("Score resource not found");
-
-        // Count players
-        let players = world.query::<&Player>().iter().count();
-
-        let mut text_render_data = vec![
-            TextRenderData {
-                content: format!("Generation: {}\nScore: {:.3}\nSurvive: {}", gene_handler.generation, score.0, players),
-                position: [-4.5, 8.5, 1.],
-                size: [0.5, 0.5],
-                color: [0.0, 0.0, 0.0],
-            }
-        ];
-
-        if self.stage == Stage::Ready {
-            text_render_data.push(
-                TextRenderData {
-                    content: "Press any key to start".to_string(),
-                    position: [-3., 1., 1.],
-                    size: [0.5, 0.5],
-                    color: [0.0, 0.0, 0.0],
-                }
-            );
-        }
-
-        text_render_data
-    }
-
-    fn should_run_fixed(&self, _world: &World, _resources: &ResourceContainer) -> bool {
-        self.stage == Stage::Run
     }
 }

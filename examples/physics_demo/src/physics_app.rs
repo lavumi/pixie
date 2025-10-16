@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use hecs::World;
 use winit::event::{WindowEvent, ElementState, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use pixie::{Application, Transform, Tile, Gravity, ResourceContainer};
 use pixie::{RigidBody, Velocity, Force, CircleCollider, BodyType, BoxCollider};
-use pixie::renderer::{TileRenderData, TextRenderData};
 
 // systems are now built and owned by the engine; keep module private here
 use crate::config;
@@ -103,20 +101,6 @@ impl Application for PhysicsApp {
                             self.reset(world);
                             true
                         }
-                        PhysicalKey::Code(KeyCode::Space) => {
-                            // self.gravity_enabled = !self.gravity_enabled;
-
-                            // // Toggle gravity in the world resource
-                            // let mut gravity = world.write_resource::<Gravity>();
-                            // if self.gravity_enabled {
-                            //     gravity.value = config::GRAVITY;
-                            // } else {
-                            //     gravity.value = [0.0, 0.0];
-                            // }
-
-                            // log::info!("Gravity: {}", self.gravity_enabled);
-                            true
-                        }
                         _ => false
                     }
                 } else {
@@ -125,27 +109,6 @@ impl Application for PhysicsApp {
             }
             _ => false
         }
-    }
-
-    fn get_tile_instances(&self, world: &World, _resources: &ResourceContainer) -> HashMap<String, Vec<TileRenderData>> {
-        let mut instances = HashMap::new();
-
-        for (_entity, (transform, tile)) in world.query::<(&Transform, &Tile)>().iter() {
-            instances
-                .entry(tile.atlas.clone())
-                .or_insert_with(Vec::new)
-                .push(TileRenderData {
-                    position: transform.position,
-                    size: transform.size,
-                    uv: tile.uv,
-                });
-        }
-
-        instances
-    }
-
-    fn get_text_instances(&self, _world: &World, _resources: &ResourceContainer) -> Vec<TextRenderData> {
-        vec![]
     }
 }
 

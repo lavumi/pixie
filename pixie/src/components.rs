@@ -32,7 +32,42 @@ pub struct Transform {
 #[derive(Clone)]
 pub struct Text {
     pub content: String,
-    pub color : [f32;3]
+    pub version: u64,  // Increment when content changes
+}
+
+impl Default for Text {
+    fn default() -> Self {
+        Text {
+            content: String::new(),
+            version: 0,
+        }
+    }
+}
+
+impl Text {
+    pub fn set_content(&mut self, content: String) {
+        if self.content != content {
+            self.content = content;
+            self.version = self.version.wrapping_add(1);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TextStyle {
+    pub size: [f32; 2],
+    pub color: [f32; 3],
+    pub z_index: f32,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        TextStyle {
+            size: [1.0, 1.0],
+            color: [1.0, 1.0, 1.0],
+            z_index: 1.0,
+        }
+    }
 }
 
 #[derive(Clone)]
