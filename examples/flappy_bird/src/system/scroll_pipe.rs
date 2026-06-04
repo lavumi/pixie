@@ -1,17 +1,22 @@
 use hecs::World;
 use pixie::ResourceContainer;
-use rand::Rng;
 use rand::rngs::ThreadRng;
+use rand::Rng;
 
 use crate::components::{Pipe, Transform};
+use crate::flappy_app::Stage;
+use crate::game_configs::{GAME_SPEED, HOLE_SIZE};
 use crate::resources::Score;
 use pixie::DeltaTime;
-use crate::game_configs::{GAME_SPEED, HOLE_SIZE};
-use crate::flappy_app::Stage;
+
+type PipeReposition = (hecs::Entity, u8, [f32; 3], [f32; 2], f32);
 
 /// Scroll pipes and respawn them when off-screen
 pub fn scroll_pipe(world: &mut World, resources: &mut ResourceContainer) {
-    let dt_value = resources.get::<DeltaTime>().expect("DeltaTime resource not found").0;
+    let dt_value = resources
+        .get::<DeltaTime>()
+        .expect("DeltaTime resource not found")
+        .0;
     let stage = resources.get::<Stage>().expect("Stage resource not found");
 
     // Only run when game is in Run stage
@@ -25,7 +30,7 @@ pub fn scroll_pipe(world: &mut World, resources: &mut ResourceContainer) {
     }
 
     // Collect entities that need repositioning and normal updates
-    let mut to_reposition: Vec<(hecs::Entity, u8, [f32; 3], [f32; 2], f32)> = Vec::new();
+    let mut to_reposition: Vec<PipeReposition> = Vec::new();
     let mut to_update: Vec<(hecs::Entity, [f32; 3])> = Vec::new();
 
     for (entity, (pipe, transform)) in world.query::<(&Pipe, &Transform)>().iter() {
@@ -38,7 +43,7 @@ pub fn scroll_pipe(world: &mut World, resources: &mut ResourceContainer) {
                 pipe.pipe_index,
                 new_transform.position,
                 new_transform.size,
-                pipe.reposition_size
+                pipe.reposition_size,
             ));
         } else {
             // Collect for update after query is done
@@ -55,7 +60,9 @@ pub fn scroll_pipe(world: &mut World, resources: &mut ResourceContainer) {
 
     // Reposition pipes with new random height
     if !to_reposition.is_empty() {
-        let rng = resources.get_mut::<ThreadRng>().expect("ThreadRng resource not found");
+        let rng = resources
+            .get_mut::<ThreadRng>()
+            .expect("ThreadRng resource not found");
         let rand = rng.gen_range(1.0..9.0);
 
         for (entity, pipe_index, mut position, mut size, reposition_size) in to_reposition {

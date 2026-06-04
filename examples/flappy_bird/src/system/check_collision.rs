@@ -1,9 +1,9 @@
 use hecs::World;
 use pixie::ResourceContainer;
 
-use crate::components::{DNA, Pipe, Player, Transform};
-use crate::resources::{GeneHandler, Score};
+use crate::components::{Dna, Pipe, Player, Transform};
 use crate::flappy_app::Stage;
+use crate::resources::{GeneHandler, Score};
 
 /// Check collisions between players and pipes/boundaries
 pub fn check_collision(world: &mut World, resources: &mut ResourceContainer) {
@@ -14,13 +14,16 @@ pub fn check_collision(world: &mut World, resources: &mut ResourceContainer) {
         return;
     }
 
-    let score = resources.get::<Score>().expect("Score resource not found").0;
+    let score = resources
+        .get::<Score>()
+        .expect("Score resource not found")
+        .0;
 
     // Collect entities to delete (can't delete while iterating)
     let mut entities_to_delete = Vec::new();
 
     // Check each player
-    for (entity, (_player, player_tr, dna)) in world.query::<(&Player, &Transform, &DNA)>().iter() {
+    for (entity, (_player, player_tr, dna)) in world.query::<(&Player, &Transform, &Dna)>().iter() {
         let pt = player_tr.position;
 
         // Check boundary collision
@@ -46,11 +49,11 @@ pub fn check_collision(world: &mut World, resources: &mut ResourceContainer) {
                     pipe_tr.position[1] - pipe_tr.size[1] * 0.5
                 } else {
                     pt[1]
-                }
+                },
             ];
 
             let dist_pow = (obstacle_point[0] - pt[0]) * (obstacle_point[0] - pt[0])
-                         + (obstacle_point[1] - pt[1]) * (obstacle_point[1] - pt[1]);
+                + (obstacle_point[1] - pt[1]) * (obstacle_point[1] - pt[1]);
 
             if dist_pow < 0.2 {
                 entities_to_delete.push((entity, dna.index));

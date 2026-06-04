@@ -5,13 +5,13 @@ pub use pixie::components::*;
 
 #[derive(Clone)]
 pub struct Background {
-    pub reposition_size : f32,
+    pub reposition_size: f32,
 }
 
 #[derive(Clone)]
 pub struct Pipe {
-    pub reposition_size : f32,
-    pub pipe_index : u8,
+    pub reposition_size: f32,
+    pub pipe_index: u8,
 }
 
 #[derive(Clone)]
@@ -20,9 +20,8 @@ pub struct PipeTarget {}
 #[derive(Clone, Default)]
 pub struct Player {
     pub force: f32,
-    pub jump : bool,
+    pub jump: bool,
 }
-
 
 // //region [ Neural Network ]
 // #[derive(Component, Clone, Default)]
@@ -32,13 +31,11 @@ pub struct Player {
 //     pub bias : Vec<f32>
 // }
 
-
 #[derive(Clone)]
-pub struct DNA {
-    pub hidden_layers:[usize;2],
-    pub genes:[f32;GENE_SIZE],
-    pub index:usize,
+pub struct Dna {
+    pub hidden_layers: [usize; 2],
+    pub genes: [f32; GENE_SIZE],
+    pub index: usize,
 }
-
 
 //endregion

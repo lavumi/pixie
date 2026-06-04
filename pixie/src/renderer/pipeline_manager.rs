@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use wgpu::{Device, Face, ShaderModule, TextureFormat, VertexBufferLayout};
 use crate::renderer::gpu_resource_manager::GPUResourceManager;
-
+use wgpu::{Device, Face, ShaderModule, TextureFormat, VertexBufferLayout};
 
 use crate::renderer::mesh::{InstanceColorTileRaw, InstanceTileRaw};
 use crate::renderer::texture::Texture;
@@ -21,52 +20,48 @@ struct PipelineDesc<'a> {
     pub layouts: Vec<String>,
     pub front_face: wgpu::FrontFace,
     pub cull_mode: Option<Face>,
-    pub label : String,
-    pub buffers : &'a [VertexBufferLayout<'a>],
+    pub label: String,
+    pub buffers: &'a [VertexBufferLayout<'a>],
     // pub depth_bias: i32,
 }
 
-
 impl PipelineDesc<'_> {
-    fn build<'a> (
-        &self ,
+    fn build(
+        &self,
         shader: ShaderModule,
         device: &Device,
-        default_format : TextureFormat,
-        gpu_resource_manager : &GPUResourceManager
+        default_format: TextureFormat,
+        gpu_resource_manager: &GPUResourceManager,
     ) -> wgpu::RenderPipeline {
-
         let bind_group_layouts = self
-                .layouts
-                .iter()
-                .map(|group_name| {
-                    gpu_resource_manager
-                            .get_bind_group_layout(group_name)
-                            .unwrap()
-                })
-                .collect::<Vec<_>>();
+            .layouts
+            .iter()
+            .map(|group_name| {
+                gpu_resource_manager
+                    .get_bind_group_layout(group_name)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
 
         let bind_group_layout_ref = bind_group_layouts
-                .iter()
-                .map(|l| {
-                    l.as_ref()
-                })
-                .collect::<Vec<_>>();
+            .iter()
+            .map(|l| l.as_ref())
+            .collect::<Vec<_>>();
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &bind_group_layout_ref,
-            push_constant_ranges: &[],
-        });
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &bind_group_layout_ref,
+                push_constant_ranges: &[],
+            });
 
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label.as_str()),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers : self.buffers,
+                buffers: self.buffers,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -93,28 +88,20 @@ impl PipelineDesc<'_> {
             },
             depth_stencil: self.depth_stencil.clone(),
             multisample: wgpu::MultisampleState {
-                count: self.sample_count, // 2.
-                mask: !self.sampler_mask, // 3.
+                count: self.sample_count,                                  // 2.
+                mask: !self.sampler_mask,                                  // 3.
                 alpha_to_coverage_enabled: self.alpha_to_coverage_enabled, // 4.
             },
             cache: None,
 
             multiview: None,
-        });
-
-        render_pipeline
+        })
     }
 }
 
-pub struct PipelineManager{
-    pipelines : HashMap<String ,  wgpu::RenderPipeline>
-}
-
-impl Default for PipelineManager {
-    fn default() -> Self {
-        let pipeline_manager = Self { pipelines: Default::default() };
-        pipeline_manager
-    }
+#[derive(Default)]
+pub struct PipelineManager {
+    pipelines: HashMap<String, wgpu::RenderPipeline>,
 }
 
 impl PipelineManager {
@@ -124,8 +111,9 @@ impl PipelineManager {
         default_format: TextureFormat,
         gpu_resource_manager: &GPUResourceManager,
     ) {
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/texture.wgsl"));
-        let render_pipeline = PipelineDesc{
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/texture.wgsl"));
+        let render_pipeline = PipelineDesc {
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: Texture::DEPTH_FORMAT,
@@ -134,22 +122,26 @@ impl PipelineManager {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            buffers : &vec![Vertex::desc(), InstanceTileRaw::desc()],
+            buffers: &[Vertex::desc(), InstanceTileRaw::desc()],
             sample_count: 1,
             sampler_mask: 0,
             alpha_to_coverage_enabled: false,
-            layouts: vec!["camera_bind_group_layout".to_string(), "texture_bind_group_layout".to_string()],
+            layouts: vec![
+                "camera_bind_group_layout".to_string(),
+                "texture_bind_group_layout".to_string(),
+            ],
             front_face: wgpu::FrontFace::Ccw,
             // cull_mode: Some(Face::Back),
             cull_mode: None,
-            label : "Base Render Pipeline".to_string()
-        }.build(shader, &device, default_format, &gpu_resource_manager);
-        self.pipelines.insert("tile_pl".to_string(), render_pipeline);
+            label: "Base Render Pipeline".to_string(),
+        }
+        .build(shader, device, default_format, gpu_resource_manager);
+        self.pipelines
+            .insert("tile_pl".to_string(), render_pipeline);
 
-
-
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/font.wgsl"));
-        let render_pipeline = PipelineDesc{
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/font.wgsl"));
+        let render_pipeline = PipelineDesc {
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: Texture::DEPTH_FORMAT,
@@ -158,22 +150,25 @@ impl PipelineManager {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            buffers : &vec![Vertex::desc(), InstanceColorTileRaw::desc()],
+            buffers: &[Vertex::desc(), InstanceColorTileRaw::desc()],
             sample_count: 1,
             sampler_mask: 0,
             alpha_to_coverage_enabled: false,
-            layouts: vec!["camera_bind_group_layout".to_string(), "texture_bind_group_layout".to_string()],
+            layouts: vec![
+                "camera_bind_group_layout".to_string(),
+                "texture_bind_group_layout".to_string(),
+            ],
             front_face: wgpu::FrontFace::Ccw,
             cull_mode: None,
-            label : "Font Render Pipeline".to_string()
-        }.build(shader, &device, default_format, &gpu_resource_manager);
+            label: "Font Render Pipeline".to_string(),
+        }
+        .build(shader, device, default_format, gpu_resource_manager);
 
-
-        self.pipelines.insert("font_pl".to_string(), render_pipeline);
-
+        self.pipelines
+            .insert("font_pl".to_string(), render_pipeline);
     }
 
-    pub fn get_pipeline(&self , name: &str) -> &wgpu::RenderPipeline{
+    pub fn get_pipeline(&self, name: &str) -> &wgpu::RenderPipeline {
         self.pipelines.get(name).unwrap()
     }
 }

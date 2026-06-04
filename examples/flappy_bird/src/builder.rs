@@ -1,10 +1,10 @@
-use rand::rngs::ThreadRng;
-use rand::Rng;
-use hecs::World;
-use pixie::ResourceContainer;
 use crate::components::*;
 use crate::game_configs::HOLE_SIZE;
 use crate::resources::GeneHandler;
+use hecs::World;
+use pixie::ResourceContainer;
+use rand::rngs::ThreadRng;
+use rand::Rng;
 
 pub fn background(world: &mut World) {
     // Background sprites
@@ -128,13 +128,12 @@ pub fn pipe(world: &mut World, pos: f32) {
     ));
 }
 
-
 /// Helper to spawn ai_player with proper DNA from resources
 pub fn ai_player_with_resources(world: &mut World, resources: &mut ResourceContainer) {
     let dna = if let Some(gene_handler) = resources.get_mut::<GeneHandler>() {
         gene_handler.get_dna()
     } else {
-        DNA {
+        Dna {
             hidden_layers: [4, 3],
             genes: [0.0; crate::game_configs::GENE_SIZE],
             index: 0,

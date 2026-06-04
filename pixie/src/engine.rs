@@ -1,22 +1,18 @@
+use hecs::{Entity, World};
 use instant::Instant;
+use std::collections::HashMap;
+use std::sync::Arc;
 use wgpu::SurfaceError;
 use winit::{
-    event::*,
-    event_loop::EventLoop,
-    window::Window,
-    application::ApplicationHandler,
-    dpi::PhysicalSize,
-    dpi::LogicalSize,
+    application::ApplicationHandler, dpi::LogicalSize, dpi::PhysicalSize, event::*,
+    event_loop::EventLoop, window::Window,
 };
-use std::sync::Arc;
-use std::collections::HashMap;
-use hecs::{World, Entity};
 
 use crate::application::Application;
-use crate::renderer::*;
+use crate::components::{Text, TextStyle, Tile, Transform};
 use crate::dispatcher::UnifiedDispatcher;
+use crate::renderer::*;
 use crate::resources::{DeltaTime, ResourceContainer};
-use crate::components::{Transform, Tile, Text, TextStyle};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
 
@@ -39,8 +35,8 @@ pub struct Engine<A: Application> {
 
     // Text rendering cache with version tracking
     text_cache: HashMap<Entity, CachedText>,
-    text_render_buffer: Vec<TextRenderData>,  // Reusable buffer
-    cache_cleanup_counter: u32,  // Periodic cleanup
+    text_render_buffer: Vec<TextRenderData>, // Reusable buffer
+    cache_cleanup_counter: u32,              // Periodic cleanup
 
     // bootstrap config for ActiveEventLoop window creation
     title: String,
@@ -76,8 +72,8 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                     })
                     .expect("Couldn't append canvas to document body.");
 
-                use std::rc::Rc;
                 use std::cell::RefCell;
+                use std::rc::Rc;
 
                 let pending: Rc<RefCell<Option<RenderState>>> = Rc::new(RefCell::new(None));
                 let pending_clone = Rc::clone(&pending);
@@ -91,15 +87,21 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                 });
 
                 self.wasm_pending_rs = Some(pending);
-                self.size = PhysicalSize::new(self.initial_width, self.initial_height); 
+                self.size = PhysicalSize::new(self.initial_width, self.initial_height);
             }
 
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let mut rs = block_on(RenderState::new(window.clone(), self.initial_width, self.initial_height));
+                let mut rs = block_on(RenderState::new(
+                    window.clone(),
+                    self.initial_width,
+                    self.initial_height,
+                ));
                 block_on(rs.init_resources());
                 if let Some(textures) = self.textures_to_load.take() {
-                    for (name, image_bytes) in textures { rs.load_texture_atlas(&name, image_bytes); }
+                    for (name, image_bytes) in textures {
+                        rs.load_texture_atlas(&name, image_bytes);
+                    }
                 }
                 self.rs = Some(rs);
                 self.size = window.inner_size();
@@ -107,80 +109,112 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
 
             self.window = Some(window);
         }
-        if let Some(w) = &self.window { w.request_redraw(); }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        if let Some(w) = &self.window { w.request_redraw(); }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
     }
 
-    fn window_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, window_id: winit::window::WindowId, event: WindowEvent) {
-        if let Some(window) = &self.window { if window_id == window.id() {
-            // Try application input first
-            if !self.app.handle_input(&mut self.world, &mut self.resources, &event) {
-                match event {
-                    WindowEvent::CloseRequested => event_loop.exit(),
-                    WindowEvent::KeyboardInput { event: key_event, .. } => {
-                        if key_event.physical_key == winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape)
-                            && key_event.state == ElementState::Pressed {
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        if let Some(window) = &self.window {
+            if window_id == window.id() {
+                // Try application input first
+                if !self
+                    .app
+                    .handle_input(&mut self.world, &mut self.resources, &event)
+                {
+                    match event {
+                        WindowEvent::CloseRequested => event_loop.exit(),
+                        WindowEvent::KeyboardInput {
+                            event: key_event, ..
+                        } if key_event.physical_key
+                            == winit::keyboard::PhysicalKey::Code(
+                                winit::keyboard::KeyCode::Escape,
+                            )
+                            && key_event.state == ElementState::Pressed =>
+                        {
                             event_loop.exit();
                         }
-                    }
-                    WindowEvent::Resized(physical_size) => {
-                        self.resize(physical_size);
-                    }
-                    WindowEvent::ScaleFactorChanged { .. } => {
-                        let new_size = window.inner_size();
-                        self.resize(new_size);
-                    }
-                    WindowEvent::RedrawRequested => {
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            // If async renderer finished, take it and finalize
-                            if self.rs.is_none() {
-                                if let Some(holder) = &self.wasm_pending_rs {
-                                    if let Some(mut rs) = holder.borrow_mut().take() {
-                                        if let Some(textures) = self.textures_to_load.take() {
-                                            for (name, image_bytes) in textures { rs.load_texture_atlas(&name, image_bytes); }
+                        WindowEvent::Resized(physical_size) => {
+                            self.resize(physical_size);
+                        }
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            let new_size = window.inner_size();
+                            self.resize(new_size);
+                        }
+                        WindowEvent::RedrawRequested => {
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                // If async renderer finished, take it and finalize
+                                if self.rs.is_none() {
+                                    if let Some(holder) = &self.wasm_pending_rs {
+                                        if let Some(mut rs) = holder.borrow_mut().take() {
+                                            if let Some(textures) = self.textures_to_load.take() {
+                                                for (name, image_bytes) in textures {
+                                                    rs.load_texture_atlas(&name, image_bytes);
+                                                }
+                                            }
+                                            self.rs = Some(rs);
                                         }
-                                        self.rs = Some(rs);
                                     }
                                 }
                             }
-                        }
-                        let mut elapsed_time = self.prev_time.elapsed().as_millis() as f32 / 1000.0;
-                        self.prev_time = Instant::now();
+                            let mut elapsed_time =
+                                self.prev_time.elapsed().as_millis() as f32 / 1000.0;
+                            self.prev_time = Instant::now();
 
-                        if elapsed_time > 0.2 { elapsed_time = 0.2; }
-
-                        // Accumulate time for fixed-step updates
-                        self.accumulator += elapsed_time;
-                        while self.accumulator >= self.fixed_dt {
-                            // Check if app wants to run fixed updates
-                            if self.app.should_run_fixed(&self.world, &self.resources) {
-                                // Provide fixed dt to systems and step dispatcher
-                                self.resources.insert(DeltaTime(self.fixed_dt));
-                                self.app.fixed_update(&mut self.world, &mut self.resources, self.fixed_dt);
-                                self.dispatcher.run_now(&mut self.world, &mut self.resources);
+                            if elapsed_time > 0.2 {
+                                elapsed_time = 0.2;
                             }
-                            self.accumulator -= self.fixed_dt;
-                        }
 
-                        // Variable-step update for non-physics
-                        self.update(elapsed_time);
+                            // Accumulate time for fixed-step updates
+                            self.accumulator += elapsed_time;
+                            while self.accumulator >= self.fixed_dt {
+                                // Check if app wants to run fixed updates
+                                if self.app.should_run_fixed(&self.world, &self.resources) {
+                                    // Provide fixed dt to systems and step dispatcher
+                                    self.resources.insert(DeltaTime(self.fixed_dt));
+                                    self.app.fixed_update(
+                                        &mut self.world,
+                                        &mut self.resources,
+                                        self.fixed_dt,
+                                    );
+                                    self.dispatcher
+                                        .run_now(&mut self.world, &mut self.resources);
+                                }
+                                self.accumulator -= self.fixed_dt;
+                            }
 
-                        match self.render() {
-                            Ok(_) => {}
-                            Err(SurfaceError::Lost | SurfaceError::Outdated) => if let Some(rs) = &mut self.rs { rs.resize(self.size); },
-                            Err(SurfaceError::OutOfMemory) => event_loop.exit(),
-                            Err(SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                            Err(SurfaceError::Other) => log::warn!("Surface error: other"),
+                            // Variable-step update for non-physics
+                            self.update(elapsed_time);
+
+                            match self.render() {
+                                Ok(_) => {}
+                                Err(SurfaceError::Lost | SurfaceError::Outdated) => {
+                                    if let Some(rs) = &mut self.rs {
+                                        rs.resize(self.size);
+                                    }
+                                }
+                                Err(SurfaceError::OutOfMemory) => event_loop.exit(),
+                                Err(SurfaceError::Timeout) => log::warn!("Surface timeout"),
+                                Err(SurfaceError::Other) => log::warn!("Surface error: other"),
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
-        }}
+        }
     }
 }
 
@@ -206,7 +240,10 @@ impl<A: Application> Engine<A> {
 
         // Insert engine-managed resources first
         let aspect_ratio = width as f32 / height as f32;
-        resources.insert(crate::resources::Camera::init_orthographic(20.0, aspect_ratio));
+        resources.insert(crate::resources::Camera::init_orthographic(
+            20.0,
+            aspect_ratio,
+        ));
         resources.insert(DeltaTime(0.0));
 
         // Initialize application (can adjust camera via resources)
@@ -224,7 +261,7 @@ impl<A: Application> Engine<A> {
             accumulator,
             fixed_dt,
             text_cache: HashMap::new(),
-            text_render_buffer: Vec::with_capacity(128),  // Pre-allocate for typical case
+            text_render_buffer: Vec::with_capacity(128), // Pre-allocate for typical case
             cache_cleanup_counter: 0,
             title: title.into(),
             initial_width: width,
@@ -240,7 +277,9 @@ impl<A: Application> Engine<A> {
     /// Load multiple textures at once
     pub fn load_textures(&mut self, textures: HashMap<String, &'static [u8]>) {
         for (name, image_bytes) in textures {
-            if let Some(rs) = &mut self.rs { rs.load_texture_atlas(&name, image_bytes); }
+            if let Some(rs) = &mut self.rs {
+                rs.load_texture_atlas(&name, image_bytes);
+            }
         }
     }
 
@@ -261,7 +300,10 @@ impl<A: Application> Engine<A> {
 
         // Insert engine-managed resources first
         let aspect_ratio = width as f32 / height as f32;
-        resources.insert(crate::resources::Camera::init_orthographic(20.0, aspect_ratio));
+        resources.insert(crate::resources::Camera::init_orthographic(
+            20.0,
+            aspect_ratio,
+        ));
         resources.insert(DeltaTime(0.0));
 
         // Initialize application (can adjust camera via resources)
@@ -300,7 +342,9 @@ impl<A: Application> Engine<A> {
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
-        if let Some(rs) = &mut self.rs { rs.resize(new_size); }
+        if let Some(rs) = &mut self.rs {
+            rs.resize(new_size);
+        }
     }
 
     fn update(&mut self, dt: f32) {
@@ -309,10 +353,15 @@ impl<A: Application> Engine<A> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let rs = match &mut self.rs { Some(rs) => rs, None => return Ok(()) };
+        let rs = match &mut self.rs {
+            Some(rs) => rs,
+            None => return Ok(()),
+        };
         // 1. Update camera from engine's managed camera
         let camera_uniform = {
-            let camera = self.resources.get::<crate::resources::Camera>()
+            let camera = self
+                .resources
+                .get::<crate::resources::Camera>()
                 .expect("Camera resource not found");
             camera.get_view_proj()
         };
@@ -336,10 +385,12 @@ impl<A: Application> Engine<A> {
         rs.update_mesh_instance(instances);
 
         // 3. Collect text instances from ECS with version-based caching
-        self.text_render_buffer.clear();  // Reuse allocation
+        self.text_render_buffer.clear(); // Reuse allocation
 
         // Update cache with changed texts (read-only query, can parallelize)
-        for (entity, (transform, text, style)) in self.world.query::<(&Transform, &Text, &TextStyle)>().iter() {
+        for (entity, (transform, text, style)) in
+            self.world.query::<(&Transform, &Text, &TextStyle)>().iter()
+        {
             // Check cache: does it exist and is version up-to-date?
             let needs_update = match self.text_cache.get(&entity) {
                 Some(cached) => cached.version != text.version,
@@ -348,15 +399,18 @@ impl<A: Application> Engine<A> {
 
             if needs_update {
                 let render_data = TextRenderData {
-                    content: std::sync::Arc::new(text.content.clone()),  // Arc for cheap cloning
+                    content: std::sync::Arc::new(text.content.clone()), // Arc for cheap cloning
                     position: [transform.position[0], transform.position[1], style.z_index],
                     size: style.size,
                     color: style.color,
                 };
-                self.text_cache.insert(entity, CachedText {
-                    version: text.version,
-                    render_data,
-                });
+                self.text_cache.insert(
+                    entity,
+                    CachedText {
+                        version: text.version,
+                        render_data,
+                    },
+                );
             }
 
             // Collect render data (cheap clone of primitives + Arc-wrapped String would be better)
@@ -367,23 +421,25 @@ impl<A: Application> Engine<A> {
 
         // Periodic cleanup of deleted entities (not every frame)
         self.cache_cleanup_counter += 1;
-        if self.cache_cleanup_counter >= 60 {  // Cleanup once per second at 60fps
+        if self.cache_cleanup_counter >= 60 {
+            // Cleanup once per second at 60fps
             self.cache_cleanup_counter = 0;
 
             // Collect all valid entities
-            let valid_entities: std::collections::HashSet<Entity> =
-                self.world.query::<&Text>()
-                    .iter()
-                    .map(|(entity, _)| entity)
-                    .collect();
+            let valid_entities: std::collections::HashSet<Entity> = self
+                .world
+                .query::<&Text>()
+                .iter()
+                .map(|(entity, _)| entity)
+                .collect();
 
             // Remove stale cache entries
-            self.text_cache.retain(|entity, _| valid_entities.contains(entity));
+            self.text_cache
+                .retain(|entity, _| valid_entities.contains(entity));
         }
 
         rs.update_text_instance(self.text_render_buffer.clone());
 
         rs.render()
     }
-
 }

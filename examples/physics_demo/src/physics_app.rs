@@ -1,15 +1,14 @@
 use hecs::World;
-use winit::event::{WindowEvent, ElementState, MouseButton};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Transform, Tile, Gravity, ResourceContainer};
-use pixie::{RigidBody, Velocity, Force, CircleCollider, BodyType, BoxCollider};
+use pixie::{Application, Gravity, ResourceContainer, Tile, Transform};
+use pixie::{BodyType, BoxCollider, CircleCollider, Force, RigidBody, Velocity};
 
 // systems are now built and owned by the engine; keep module private here
 use crate::config;
 
 pub struct PhysicsApp {
-    gravity_enabled: bool,
     ball_state: BallState,
     balls_to_shoot: Vec<[f32; 2]>, // Store positions for balls to be shot
     shot_index: usize,
@@ -37,7 +36,6 @@ enum BallState {
 impl Default for PhysicsApp {
     fn default() -> Self {
         PhysicsApp {
-            gravity_enabled: true,
             ball_state: BallState::Ready,
             balls_to_shoot: Vec::new(),
             shot_index: 0,
@@ -51,8 +49,8 @@ impl Default for PhysicsApp {
             start_x: -15.0,
             start_y: 15.0,
             ball_sizes: [0.3, 0.5, 0.7], // Three different ball sizes
-            ball_mass: 1.0,  // Increase mass to resist gravity better
-            ball_restitution: 0.6,  // Increase bounce
+            ball_mass: 1.0,              // Increase mass to resist gravity better
+            ball_restitution: 0.6,       // Increase bounce
         }
     }
 }
@@ -65,9 +63,21 @@ impl Application for PhysicsApp {
         resources.insert(Gravity::default());
 
         // Create boundaries (static walls)
-        self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0);   // Bottom
-        self.create_boundary(world, -config::BOX_SIZE[0] / 2.0 - 0.5,  -5.5, 1.0, config::BOX_SIZE[1]);   // Left
-        self.create_boundary(world, config::BOX_SIZE[0] / 2.0 + 0.5, -5.5, 1.0, config::BOX_SIZE[1]);    // Right
+        self.create_boundary(world, 0.0, -12.5, config::BOX_SIZE[0], 1.0); // Bottom
+        self.create_boundary(
+            world,
+            -config::BOX_SIZE[0] / 2.0 - 0.5,
+            -5.5,
+            1.0,
+            config::BOX_SIZE[1],
+        ); // Left
+        self.create_boundary(
+            world,
+            config::BOX_SIZE[0] / 2.0 + 0.5,
+            -5.5,
+            1.0,
+            config::BOX_SIZE[1],
+        ); // Right
 
         self.start_ball_shooting();
         log::info!("Physics demo initialized - 10 balls + 4 walls created");
@@ -82,9 +92,18 @@ impl Application for PhysicsApp {
 
     // No dispatcher building in app anymore
 
-    fn handle_input(&mut self, world: &mut World, _resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
+    fn handle_input(
+        &mut self,
+        world: &mut World,
+        _resources: &mut ResourceContainer,
+        event: &WindowEvent,
+    ) -> bool {
         match event {
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
                 // Only allow shooting when in Ready state
                 // if matches!(self.ball_state, BallState::Ready) {
                 //     self.start_ball_shooting();
@@ -94,20 +113,16 @@ impl Application for PhysicsApp {
                 // }
                 false
             }
-            WindowEvent::KeyboardInput { event: key_event, .. } => {
-                if key_event.state == ElementState::Pressed {
-                    match key_event.physical_key {
-                        PhysicalKey::Code(KeyCode::KeyR) => {
-                            self.reset(world);
-                            true
-                        }
-                        _ => false
-                    }
-                } else {
-                    false
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } if key_event.state == ElementState::Pressed => match key_event.physical_key {
+                PhysicalKey::Code(KeyCode::KeyR) => {
+                    self.reset(world);
+                    true
                 }
-            }
-            _ => false
+                _ => false,
+            },
+            _ => false,
         }
     }
 }
@@ -172,8 +187,14 @@ impl PhysicsApp {
             self.balls_to_shoot.push([self.start_x, self.start_y]);
         }
 
-        log::info!("Started ball shooting sequence - {} balls from ({}, {}) at {}° ({}s intervals)", 
-                  self.ball_count, self.start_x, self.start_y, self.shoot_angle, self.shoot_interval);
+        log::info!(
+            "Started ball shooting sequence - {} balls from ({}, {}) at {}° ({}s intervals)",
+            self.ball_count,
+            self.start_x,
+            self.start_y,
+            self.shoot_angle,
+            self.shoot_interval
+        );
     }
 
     fn process_ball_shooting(&mut self, world: &mut World, dt: f32) {
@@ -233,7 +254,7 @@ impl PhysicsApp {
         ));
         world.spawn((
             Transform {
-                position: [pos[0]+ ball_size * 0.5, pos[1] - ball_size, 0.5],
+                position: [pos[0] + ball_size * 0.5, pos[1] - ball_size, 0.5],
                 size: [ball_size, ball_size],
             },
             Tile {
@@ -254,7 +275,7 @@ impl PhysicsApp {
         ));
         world.spawn((
             Transform {
-                position: [pos[0]- ball_size * 0.5, pos[1] + ball_size, 0.5],
+                position: [pos[0] - ball_size * 0.5, pos[1] + ball_size, 0.5],
                 size: [ball_size, ball_size],
             },
             Tile {

@@ -1,13 +1,14 @@
-use std::cmp::{max, min};
-use std::collections::HashMap;
-use fontdue::Metrics;
 use crate::renderer::mesh::InstanceColorTileRaw;
 use crate::renderer::TextRenderData;
+use fontdue::Metrics;
+use std::cmp::{max, min};
+use std::collections::HashMap;
 
 const RENDER_CHARACTER_ARRAY: [char; 64] = [
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '.',
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+    't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4',
+    '5', '6', '7', '8', '9', ':', '.',
 ];
 
 struct Glyph {
@@ -26,16 +27,9 @@ struct FontRenderData {
     advance: f32,
 }
 
+#[derive(Default)]
 pub struct FontManager {
     font_map: HashMap<char, FontRenderData>,
-}
-
-impl Default for FontManager {
-    fn default() -> Self {
-        FontManager {
-            font_map: Default::default(),
-        }
-    }
 }
 
 impl FontManager {
@@ -48,7 +42,7 @@ impl FontManager {
         let mut max_y_min = 0;
         let mut glyphs = vec![];
 
-        for (_, character) in RENDER_CHARACTER_ARRAY.iter().enumerate() {
+        for character in RENDER_CHARACTER_ARRAY.iter() {
             let (metrics, bitmap) = font.rasterize(*character, font_size);
             glyphs.push(Glyph { bitmap, metrics });
             size[0] = max(size[0], metrics.width);
@@ -71,7 +65,7 @@ impl FontManager {
 
             let metrics = glyphs[index].metrics;
             self.font_map.insert(
-                character.clone(),
+                *character,
                 FontRenderData {
                     uv,
                     advance: metrics.advance_width,
@@ -79,11 +73,11 @@ impl FontManager {
             );
         }
 
-        return RasterizedFont {
+        RasterizedFont {
             glyphs,
             size,
             max_y_min,
-        };
+        }
     }
 
     pub fn make_font_buffer(
@@ -144,16 +138,16 @@ impl FontManager {
                 },
                 size,
             );
-            
+
             // 안전한 오프셋 계산 - 오버플로우 방지
             let char_x = index % char_in_row;
             let char_y = index / char_in_row;
-            
+
             // 각 컴포넌트를 개별적으로 계산하여 오버플로우 방지
             let x_offset = char_x * max_size[0];
             let y_offset = char_y * atlas_size * max_size[1];
             let metrics_x = metrics.xmin.max(0) as usize; // 음수 방지
-            
+
             // Y 위치 계산 - 안전한 방식
             let glyph_height = metrics.height as i32;
             let glyph_ymin = metrics.ymin;
@@ -163,15 +157,15 @@ impl FontManager {
             } else {
                 max_size[1] // 음수인 경우 기본값 사용
             };
-            
+
             let final_y_offset = atlas_size * y_position;
-            
+
             // 최종 오프셋 계산 - 각 단계에서 오버플로우 체크
             let total_offset = x_offset
                 .saturating_add(y_offset)
                 .saturating_add(metrics_x)
                 .saturating_add(final_y_offset);
-            
+
             let offset = (total_offset * 4) as wgpu::BufferAddress;
 
             encoder.copy_texture_to_buffer(
@@ -193,7 +187,7 @@ impl FontManager {
             );
         }
         queue.submit(Some(encoder.finish()));
-        return Ok(output_buffer);
+        Ok(output_buffer)
     }
 
     pub async fn make_font_atlas_rgba(
@@ -263,7 +257,6 @@ impl FontManager {
         Ok(texture)
     }
 
-
     fn get_render_data(&self, char_key: char) -> &FontRenderData {
         match self.font_map.get(&char_key) {
             Some(value) => value,
@@ -295,7 +288,8 @@ impl FontManager {
             let render_data = self.get_render_data(txt);
 
             // Use consistent scaling for now - just use advance width for proportional spacing
-            let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(text.size[0], text.size[1], 1.0);
+            let scale_matrix =
+                cgmath::Matrix4::from_nonuniform_scale(text.size[0], text.size[1], 1.0);
             let translation_matrix = cgmath::Matrix4::from_translation(position);
             let color = text.color;
 
@@ -310,6 +304,6 @@ impl FontManager {
             position.x += render_data.advance * text.size[0] / 24.0;
         }
 
-        return result;
+        result
     }
 }

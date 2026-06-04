@@ -3,7 +3,11 @@
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
-pub enum BodyType { Static, Kinematic, Dynamic }
+pub enum BodyType {
+    Static,
+    Kinematic,
+    Dynamic,
+}
 
 #[derive(Clone)]
 pub struct Collider {
@@ -29,19 +33,10 @@ pub struct Transform {
     pub size: [f32; 2],
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Text {
     pub content: String,
-    pub version: u64,  // Increment when content changes
-}
-
-impl Default for Text {
-    fn default() -> Self {
-        Text {
-            content: String::new(),
-            version: 0,
-        }
-    }
+    pub version: u64, // Increment when content changes
 }
 
 impl Text {
@@ -102,7 +97,7 @@ impl Default for Animation {
 pub struct RigidBody {
     pub body_type: BodyType,
     pub mass: f32,
-    pub restitution: f32,  // 탄성 (0.0 = 완전 비탄성, 1.0 = 완전 탄성)
+    pub restitution: f32, // 탄성 (0.0 = 완전 비탄성, 1.0 = 완전 탄성)
 }
 
 impl Default for RigidBody {
@@ -146,6 +141,9 @@ pub struct BoxCollider {
 
 impl Default for BoxCollider {
     fn default() -> Self {
-        BoxCollider { width: 1.0, height: 1.0 }
+        BoxCollider {
+            width: 1.0,
+            height: 1.0,
+        }
     }
 }

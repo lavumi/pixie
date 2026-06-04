@@ -1,7 +1,7 @@
 pub use render_input_data::*;
-pub use renderer::RenderState;
+pub use render_state::RenderState;
 
-mod renderer;
+mod render_state;
 mod texture;
 mod pipeline_manager;
 mod gpu_resource_manager;
@@ -10,4 +10,3 @@ mod mesh;
 mod font_manager;
 mod builder;
 mod render_input_data;
-

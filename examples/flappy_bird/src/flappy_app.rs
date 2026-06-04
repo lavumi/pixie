@@ -1,24 +1,24 @@
-use rand::rngs::ThreadRng;
 use hecs::World;
+use rand::rngs::ThreadRng;
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, ResourceContainer, Transform, Text, TextStyle};
+use pixie::{Application, ResourceContainer, Text, TextStyle, Transform};
 
-use crate::builder::{background, pipe, ai_player_with_resources};
+use crate::builder::{ai_player_with_resources, background, pipe};
 use crate::components::*;
 use crate::game_configs::GENE_SIZE;
 use crate::resources::*;
 // systems are now built and owned by the engine
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
-pub enum Stage { Ready, Run, Pause, End }
-
-impl Default for Stage {
-    fn default() -> Self {
-        Stage::Ready
-    }
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy, Default)]
+pub enum Stage {
+    #[default]
+    Ready,
+    Run,
+    Pause,
+    End,
 }
 
 pub struct FlappyApplication {
@@ -108,9 +108,16 @@ impl Application for FlappyApplication {
         self.update_texts(world, resources);
     }
 
-    fn handle_input(&mut self, world: &mut World, resources: &mut ResourceContainer, event: &WindowEvent) -> bool {
+    fn handle_input(
+        &mut self,
+        world: &mut World,
+        resources: &mut ResourceContainer,
+        event: &WindowEvent,
+    ) -> bool {
         match event {
-            WindowEvent::KeyboardInput { event: key_event, .. } => {
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
                 let physical_key = key_event.physical_key;
                 let state = key_event.state;
 
@@ -127,23 +134,21 @@ impl Application for FlappyApplication {
                         }
                         true
                     }
-                    Stage::Run => {
-                        match physical_key {
-                            PhysicalKey::Code(KeyCode::KeyP) => {
-                                if state == ElementState::Released {
-                                    self.stage = Stage::Pause;
-                                }
-                                true
+                    Stage::Run => match physical_key {
+                        PhysicalKey::Code(KeyCode::KeyP) => {
+                            if state == ElementState::Released {
+                                self.stage = Stage::Pause;
                             }
-                            PhysicalKey::Code(KeyCode::KeyR) => {
-                                if state == ElementState::Released {
-                                    world.clear();
-                                }
-                                true
-                            }
-                            _ => false,
+                            true
                         }
-                    }
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            if state == ElementState::Released {
+                                world.clear();
+                            }
+                            true
+                        }
+                        _ => false,
+                    },
                 }
             }
             _ => false,
@@ -163,7 +168,8 @@ impl FlappyApplication {
             .flatten()
             .collect::<std::collections::HashSet<_>>();
 
-        let to_delete: Vec<hecs::Entity> = world.iter()
+        let to_delete: Vec<hecs::Entity> = world
+            .iter()
             .map(|entity_ref| entity_ref.entity())
             .filter(|entity| !text_entities.contains(entity))
             .collect();
@@ -195,19 +201,28 @@ impl FlappyApplication {
         }
     }
 
-    pub fn get_gene_data(&self, world: &World, resources: &ResourceContainer) -> ([f32; GENE_SIZE], [f32; 2]) {
-        let gene_handler = resources.get::<GeneHandler>()
+    pub fn get_gene_data(
+        &self,
+        world: &World,
+        resources: &ResourceContainer,
+    ) -> ([f32; GENE_SIZE], [f32; 2]) {
+        let gene_handler = resources
+            .get::<GeneHandler>()
             .expect("GeneHandler resource not found");
 
         // Find last player
         let mut last_player: Option<([f32; 3], usize)> = None;
-        for (_entity, (transform, dna, _player)) in world.query::<(&pixie::Transform, &DNA, &Player)>().iter() {
+        for (_entity, (transform, dna, _player)) in
+            world.query::<(&pixie::Transform, &Dna, &Player)>().iter()
+        {
             last_player = Some((transform.position, dna.index));
         }
 
         // Find nearest pipe
         let mut pipe_position = [99.0, 0.0];
-        for (_entity, (transform, _pipe_target)) in world.query::<(&pixie::Transform, &PipeTarget)>().iter() {
+        for (_entity, (transform, _pipe_target)) in
+            world.query::<(&pixie::Transform, &PipeTarget)>().iter()
+        {
             if transform.position[0] > -3.0 && pipe_position[0] > transform.position[0] {
                 pipe_position = [transform.position[0], transform.position[1]];
             }
@@ -231,16 +246,18 @@ impl FlappyApplication {
         // Update stats text
         if let Some(entity) = self.stats_text_entity {
             if let Ok(mut text) = world.get::<&mut Text>(entity) {
-                let gene_handler = resources.get::<GeneHandler>()
+                let gene_handler = resources
+                    .get::<GeneHandler>()
                     .expect("GeneHandler resource not found");
-                let score = resources.get::<Score>()
-                    .expect("Score resource not found");
+                let score = resources.get::<Score>().expect("Score resource not found");
 
                 // Count players
                 let players = world.query::<&Player>().iter().count();
 
-                let new_content = format!("Generation: {}\nScore: {:.3}\nSurvive: {}",
-                    gene_handler.generation, score.0, players);
+                let new_content = format!(
+                    "Generation: {}\nScore: {:.3}\nSurvive: {}",
+                    gene_handler.generation, score.0, players
+                );
 
                 // Use set_content helper which auto-increments version
                 text.set_content(new_content);
