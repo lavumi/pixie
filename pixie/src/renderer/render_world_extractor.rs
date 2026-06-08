@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use hecs::{Entity, World};
 
-use crate::components::{Text, TextStyle, Tile, Transform};
-use crate::renderer::{RenderFrame, TextRenderData, TileRenderData};
+use crate::components::{Sprite, Text, TextStyle, Transform};
+use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
 
 struct CachedText {
@@ -14,20 +14,20 @@ struct CachedText {
 
 #[derive(Default)]
 pub struct RenderWorldExtractor {
-    tile_render_data: HashMap<String, Vec<TileRenderData>>,
-    tile_atlases: Vec<String>,
-    active_tile_atlases: HashSet<String>,
+    sprite_render_data: HashMap<String, Vec<SpriteRenderData>>,
+    sprite_atlases: Vec<String>,
+    active_sprite_atlases: HashSet<String>,
     text_cache: HashMap<Entity, CachedText>,
     text_render_buffer: Vec<TextRenderData>,
     cache_cleanup_counter: u32,
 }
 
 impl RenderWorldExtractor {
-    pub fn with_capacity(tile_atlas_count: usize, text_count: usize) -> Self {
+    pub fn with_capacity(sprite_atlas_count: usize, text_count: usize) -> Self {
         Self {
-            tile_render_data: HashMap::with_capacity(tile_atlas_count),
-            tile_atlases: Vec::with_capacity(tile_atlas_count),
-            active_tile_atlases: HashSet::with_capacity(tile_atlas_count),
+            sprite_render_data: HashMap::with_capacity(sprite_atlas_count),
+            sprite_atlases: Vec::with_capacity(sprite_atlas_count),
+            active_sprite_atlases: HashSet::with_capacity(sprite_atlas_count),
             text_cache: HashMap::with_capacity(text_count),
             text_render_buffer: Vec::with_capacity(text_count),
             cache_cleanup_counter: 0,
@@ -44,36 +44,37 @@ impl RenderWorldExtractor {
             .expect("Camera resource not found")
             .get_view_proj();
 
-        self.extract_tiles(world);
+        self.extract_sprites(world);
         self.extract_texts(world);
 
         RenderFrame {
             camera_uniform,
-            tile_render_data: &self.tile_render_data,
-            tile_atlases: &self.tile_atlases,
+            sprite_render_data: &self.sprite_render_data,
+            sprite_atlases: &self.sprite_atlases,
             texts: &self.text_render_buffer,
         }
     }
 
-    fn extract_tiles(&mut self, world: &World) {
-        for tiles in self.tile_render_data.values_mut() {
-            tiles.clear();
+    fn extract_sprites(&mut self, world: &World) {
+        for sprites in self.sprite_render_data.values_mut() {
+            sprites.clear();
         }
-        self.tile_atlases.clear();
-        self.active_tile_atlases.clear();
+        self.sprite_atlases.clear();
+        self.active_sprite_atlases.clear();
 
-        for (_entity, (transform, tile)) in world.query::<(&Transform, &Tile)>().iter() {
-            if self.active_tile_atlases.insert(tile.atlas.clone()) {
-                self.tile_atlases.push(tile.atlas.clone());
+        for (_entity, (transform, sprite)) in world.query::<(&Transform, &Sprite)>().iter() {
+            if self.active_sprite_atlases.insert(sprite.atlas.clone()) {
+                self.sprite_atlases.push(sprite.atlas.clone());
             }
 
-            self.tile_render_data
-                .entry(tile.atlas.clone())
+            self.sprite_render_data
+                .entry(sprite.atlas.clone())
                 .or_default()
-                .push(TileRenderData {
+                .push(SpriteRenderData {
                     position: transform.position,
                     size: transform.size,
-                    uv: tile.uv,
+                    rotation: transform.rotation,
+                    uv: sprite.uv,
                 });
         }
     }

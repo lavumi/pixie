@@ -58,6 +58,7 @@ impl Application for FlappyApplication {
             Transform {
                 position: [-4.5, 8.5, 0.0],
                 size: [1.0, 1.0],
+                rotation: 0.0,
             },
             Text {
                 content: "Generation: 0\nScore: 0.000\nSurvive: 0".to_string(),
@@ -74,6 +75,7 @@ impl Application for FlappyApplication {
             Transform {
                 position: [-3.0, 1.0, 0.0],
                 size: [1.0, 1.0],
+                rotation: 0.0,
             },
             Text {
                 content: "Press any key to start".to_string(),
@@ -275,6 +277,7 @@ impl FlappyApplication {
                         Transform {
                             position: [-3.0, 1.0, 0.0],
                             size: [1.0, 1.0],
+                            rotation: 0.0,
                         },
                         Text {
                             content: "Press any key to start".to_string(),

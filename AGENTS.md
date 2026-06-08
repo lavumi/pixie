@@ -83,7 +83,7 @@ The engine owns the `hecs::World`, a typed `ResourceContainer`, the dispatcher, 
 
 Rendering data is collected from ECS components:
 
-- `Transform + Tile` for sprites/tiles
+- `Transform + Sprite` for textured sprites
 - `Transform + Text + TextStyle` for text
 - `Camera` from resources for the view-projection matrix
 
@@ -114,7 +114,7 @@ Shaders live in `pixie/assets/shader/`.
 Generic components are in `pixie/src/components.rs`, including:
 
 - `Transform`
-- `Tile`
+- `Sprite`
 - `Text`
 - `TextStyle`
 - `Animation`

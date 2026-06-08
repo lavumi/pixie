@@ -1,4 +1,4 @@
-use crate::renderer::mesh::InstanceColorTileRaw;
+use crate::renderer::mesh::ColorSpriteInstanceRaw;
 use crate::renderer::TextRenderData;
 use fontdue::Metrics;
 use std::cmp::{max, min};
@@ -264,7 +264,7 @@ impl FontManager {
         }
     }
 
-    pub fn make_instance_buffer(&self, text: &TextRenderData) -> Vec<InstanceColorTileRaw> {
+    pub fn make_instance_buffer(&self, text: &TextRenderData) -> Vec<ColorSpriteInstanceRaw> {
         let line_space = 0.1;
         let mut result = Vec::new();
         let mut position = cgmath::Vector3 {
@@ -294,7 +294,7 @@ impl FontManager {
             let color = text.color;
 
             let model = (translation_matrix * scale_matrix).into();
-            result.push(InstanceColorTileRaw {
+            result.push(ColorSpriteInstanceRaw {
                 uv: render_data.uv,
                 model,
                 color,

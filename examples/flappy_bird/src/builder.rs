@@ -9,13 +9,14 @@ use rand::Rng;
 pub fn background(world: &mut World) {
     // Background sprites
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 1.0, 0.0, 1.0],
             atlas: "bg".to_string(),
         },
         Transform {
             position: [0., 1., 0.2],
             size: [16.0, 16.0],
+            rotation: 0.0,
         },
         Background {
             reposition_size: 32.0,
@@ -23,13 +24,14 @@ pub fn background(world: &mut World) {
     ));
 
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 1.0, 0.0, 1.0],
             atlas: "bg".to_string(),
         },
         Transform {
             position: [16., 1., 0.2],
             size: [16.0, 16.0],
+            rotation: 0.0,
         },
         Background {
             reposition_size: 32.0,
@@ -40,13 +42,14 @@ pub fn background(world: &mut World) {
     for i in 0..16 {
         let pos = i as f32 - 7.5;
         world.spawn((
-            Tile {
+            Sprite {
                 uv: [0.0, 0.125, 0.75, 1.0],
                 atlas: "tile".to_string(),
             },
             Transform {
                 position: [pos, -8., 0.2],
                 size: [1.0, 2.0],
+                rotation: 0.0,
             },
             Background {
                 reposition_size: 16.0,
@@ -64,13 +67,14 @@ pub fn pipe(world: &mut World, pos: f32) {
 
     // Top pipe cap
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 0.25, 0., 0.25],
             atlas: "tile".to_string(),
         },
         Transform {
             position: [pos, rand - 6.0, 0.3],
             size: [2.0, 2.0],
+            rotation: 0.0,
         },
         Pipe {
             reposition_size: 16.0,
@@ -81,13 +85,14 @@ pub fn pipe(world: &mut World, pos: f32) {
 
     // Top pipe body
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 0.25, 0.25, 0.25],
             atlas: "tile".to_string(),
         },
         Transform {
             position: [pos, rand * 0.5 - 7.0, 0.3],
             size: [2.0, rand],
+            rotation: 0.0,
         },
         Pipe {
             reposition_size: 16.0,
@@ -97,13 +102,14 @@ pub fn pipe(world: &mut World, pos: f32) {
 
     // Bottom pipe cap
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 0.25, 0.5, 0.75],
             atlas: "tile".to_string(),
         },
         Transform {
             position: [pos, rand + HOLE_SIZE - 4.0, 0.3],
             size: [2.0, 2.0],
+            rotation: 0.0,
         },
         Pipe {
             reposition_size: 16.0,
@@ -113,13 +119,14 @@ pub fn pipe(world: &mut World, pos: f32) {
 
     // Bottom pipe body
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 0.25, 0.5, 0.5],
             atlas: "tile".to_string(),
         },
         Transform {
             position: [pos, (rand + HOLE_SIZE - 4.0) * 0.5 + 5.5, 0.3],
             size: [2.0, 13.0 - (rand + HOLE_SIZE)],
+            rotation: 0.0,
         },
         Pipe {
             reposition_size: 16.0,
@@ -141,13 +148,14 @@ pub fn ai_player_with_resources(world: &mut World, resources: &mut ResourceConta
     };
 
     world.spawn((
-        Tile {
+        Sprite {
             uv: [0.0, 0.25, 0.0, 1.0],
             atlas: "player".to_string(),
         },
         Transform {
             position: [0., 0., 0.3],
             size: [1., 1.],
+            rotation: 0.0,
         },
         Player::default(),
         Animation {

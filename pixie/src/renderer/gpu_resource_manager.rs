@@ -6,8 +6,8 @@ use cgmath::SquareMatrix;
 use wgpu::util::DeviceExt;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, RenderPass};
 
-use crate::renderer::builder::make_tile_mesh;
-use crate::renderer::mesh::{InstanceColorTileRaw, InstanceTileRaw, Mesh};
+use crate::renderer::builder::make_quad_mesh;
+use crate::renderer::mesh::{ColorSpriteInstanceRaw, Mesh, SpriteInstanceRaw};
 use crate::renderer::texture::Texture;
 
 #[derive(Default)]
@@ -37,7 +37,7 @@ impl GPUResourceManager {
         self.make_bind_group(name, texture, device);
 
         // Auto-create mesh
-        let mesh = make_tile_mesh(device, name.to_string());
+        let mesh = make_quad_mesh(device, name.to_string());
         self.add_mesh(name, mesh);
     }
 
@@ -232,81 +232,81 @@ impl GPUResourceManager {
         self.buffers.get(&name.into()).unwrap().clone()
     }
 
-    pub fn update_mesh_instance<T: Into<String>>(
+    pub fn update_sprite_instances<T: Into<String>>(
         &mut self,
         name: T,
         device: &Device,
         queue: &Queue,
-        tile_instance: Vec<InstanceTileRaw>,
+        sprite_instances: Vec<SpriteInstanceRaw>,
     ) {
         let name_str = name.into();
         let mesh = self.meshes_by_atlas.get_mut(&name_str).unwrap();
-        if tile_instance.is_empty() {
+        if sprite_instances.is_empty() {
             mesh.num_instances = 0;
             return;
         }
-        if mesh.num_instances == tile_instance.len() as u32 {
+        if mesh.num_instances == sprite_instances.len() as u32 {
             queue.write_buffer(
                 mesh.instance_buffer.as_ref().unwrap(),
                 0,
-                bytemuck::cast_slice(&tile_instance),
+                bytemuck::cast_slice(&sprite_instances),
             );
         } else {
             log::debug!(
-                "update_mesh_instance {} before : {} , after : {}",
+                "update_sprite_instances {} before : {} , after : {}",
                 name_str,
                 mesh.num_instances,
-                tile_instance.len()
+                sprite_instances.len()
             );
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(format!("Instance Buffer {}", name_str).as_str()),
-                contents: bytemuck::cast_slice(&tile_instance),
+                contents: bytemuck::cast_slice(&sprite_instances),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
-            mesh.replace_instance(instance_buffer, tile_instance.len() as u32);
+            mesh.replace_instance(instance_buffer, sprite_instances.len() as u32);
         }
     }
 
-    pub fn update_color_mesh_instance<T: Into<String>>(
+    pub fn update_color_sprite_instances<T: Into<String>>(
         &mut self,
         name: T,
         device: &Device,
         queue: &Queue,
-        tile_instance: Vec<InstanceColorTileRaw>,
+        sprite_instances: Vec<ColorSpriteInstanceRaw>,
     ) {
         let name_str = name.into();
         let mesh = self.meshes_by_atlas.get_mut(&name_str).unwrap();
-        if tile_instance.is_empty() {
+        if sprite_instances.is_empty() {
             mesh.num_instances = 0;
             return;
         }
 
-        if mesh.num_instances == tile_instance.len() as u32 {
+        if mesh.num_instances == sprite_instances.len() as u32 {
             queue.write_buffer(
                 mesh.instance_buffer.as_ref().unwrap(),
                 0,
-                bytemuck::cast_slice(&tile_instance),
+                bytemuck::cast_slice(&sprite_instances),
             );
         } else {
             log::debug!(
-                "update_mesh_instance {} before : {} , after : {}",
+                "update_color_sprite_instances {} before : {} , after : {}",
                 name_str,
                 mesh.num_instances,
-                tile_instance.len()
+                sprite_instances.len()
             );
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(format!("Instance Buffer {}", name_str).as_str()),
-                contents: bytemuck::cast_slice(&tile_instance),
+                contents: bytemuck::cast_slice(&sprite_instances),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
-            mesh.replace_instance(instance_buffer, tile_instance.len() as u32);
+            mesh.replace_instance(instance_buffer, sprite_instances.len() as u32);
         }
     }
 
     pub fn render<'a>(&'a self, render_pass: &mut RenderPass<'a>, atlas_names: &'a [String]) {
         self.set_bind_group(render_pass, "camera");
 
-        log::debug!("Rendering {} visible tile atlases", atlas_names.len());
+        log::debug!("Rendering {} visible sprite atlases", atlas_names.len());
         for atlas_name in atlas_names {
             self.render_meshes(render_pass, atlas_name);
         }
@@ -318,7 +318,7 @@ impl GPUResourceManager {
     }
 
     pub fn init_ui_meshes(&mut self, device: &Device) {
-        self.add_mesh("font", make_tile_mesh(device, "font".to_string()));
+        self.add_mesh("font", make_quad_mesh(device, "font".to_string()));
     }
 
     pub fn render_ui<'a>(&'a self, render_pass: &mut RenderPass<'a>) {

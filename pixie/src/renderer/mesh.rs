@@ -1,4 +1,3 @@
-
 pub struct Mesh {
     pub atlas_name: String,
     pub vertex_buffer: wgpu::Buffer,
@@ -9,7 +8,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn replace_instance(&mut self, buffer: wgpu::Buffer , num_instance : u32){
+    pub fn replace_instance(&mut self, buffer: wgpu::Buffer, num_instance: u32) {
         self.instance_buffer = Some(buffer);
         self.num_instances = num_instance;
     }
@@ -24,19 +23,18 @@ impl std::fmt::Debug for Mesh {
     }
 }
 
-
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct InstanceTileRaw {
+pub struct SpriteInstanceRaw {
     pub(crate) uv: [f32; 4],
     pub(crate) model: [[f32; 4]; 4],
 }
 
-impl InstanceTileRaw {
+impl SpriteInstanceRaw {
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<InstanceTileRaw>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<SpriteInstanceRaw>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -69,20 +67,19 @@ impl InstanceTileRaw {
     }
 }
 
-
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct InstanceColorTileRaw {
+pub struct ColorSpriteInstanceRaw {
     pub(crate) uv: [f32; 4],
     pub(crate) model: [[f32; 4]; 4],
     pub(crate) color: [f32; 3],
 }
 
-impl InstanceColorTileRaw {
+impl ColorSpriteInstanceRaw {
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<InstanceColorTileRaw>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<ColorSpriteInstanceRaw>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {

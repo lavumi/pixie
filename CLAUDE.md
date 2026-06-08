@@ -64,7 +64,7 @@ pub trait Application {
     fn update(&mut self, world: &mut World, dt: f32);
     fn handle_input(&mut self, world: &mut World, event: &WindowEvent) -> bool;
     fn get_camera_uniform(&self, world: &World) -> [[f32; 4]; 4];
-    fn get_tile_instances(&self, world: &World) -> HashMap<String, Vec<TileRenderData>>;
+    fn get_sprite_instances(&self, world: &World) -> HashMap<String, Vec<SpriteRenderData>>;
     fn get_text_instances(&self, world: &World) -> Vec<TextRenderData>;
 }
 ```

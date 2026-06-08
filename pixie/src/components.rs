@@ -22,15 +22,41 @@ impl Default for Collider {
 }
 
 #[derive(Clone)]
-pub struct Tile {
+pub struct Sprite {
     pub uv: [f32; 4],
     pub atlas: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transform {
     pub position: [f32; 3],
     pub size: [f32; 2],
+    /// Counter-clockwise rotation around the Z axis, in radians.
+    pub rotation: f32,
+}
+
+impl Transform {
+    pub fn new(position: [f32; 3], size: [f32; 2]) -> Self {
+        Self {
+            position,
+            size,
+            rotation: 0.0,
+        }
+    }
+
+    pub fn with_rotation(position: [f32; 3], size: [f32; 2], rotation: f32) -> Self {
+        Self {
+            position,
+            size,
+            rotation,
+        }
+    }
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self::new([0.0, 0.0, 0.0], [1.0, 1.0])
+    }
 }
 
 #[derive(Clone, Default)]

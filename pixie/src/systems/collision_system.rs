@@ -1,6 +1,6 @@
-use hecs::{World, Entity};
-use crate::components::{Transform, Velocity, RigidBody, CircleCollider, BoxCollider, BodyType};
+use crate::components::{BodyType, BoxCollider, CircleCollider, RigidBody, Transform, Velocity};
 use crate::resources::ResourceContainer;
+use hecs::{Entity, World};
 
 #[derive(Debug, Clone)]
 pub struct CollisionInfo {
@@ -31,6 +31,8 @@ enum ColliderType {
 }
 
 /// Collision system - detects and resolves collisions between rigid bodies
+///
+/// Box collision remains axis-aligned and intentionally ignores `Transform::rotation`.
 pub fn collision_system(world: &mut World, _resources: &mut ResourceContainer) {
     // Collision iteration for stability
     const ITERATIONS: usize = 8;
@@ -42,19 +44,27 @@ pub fn collision_system(world: &mut World, _resources: &mut ResourceContainer) {
         let mut entity_data = Vec::new();
 
         // Collect circle collider entities
-        for (entity, (transform, body, collider)) in world.query::<(&Transform, &RigidBody, &CircleCollider)>().iter() {
+        for (entity, (transform, body, collider)) in world
+            .query::<(&Transform, &RigidBody, &CircleCollider)>()
+            .iter()
+        {
             entity_data.push(EntityCollisionData {
                 entity,
                 position: [transform.position[0], transform.position[1]],
                 mass: body.mass,
                 restitution: body.restitution,
                 body_type: body.body_type,
-                collider: ColliderType::Circle { radius: collider.radius },
+                collider: ColliderType::Circle {
+                    radius: collider.radius,
+                },
             });
         }
 
         // Collect box collider entities
-        for (entity, (transform, body, collider)) in world.query::<(&Transform, &RigidBody, &BoxCollider)>().iter() {
+        for (entity, (transform, body, collider)) in world
+            .query::<(&Transform, &RigidBody, &BoxCollider)>()
+            .iter()
+        {
             entity_data.push(EntityCollisionData {
                 entity,
                 position: [transform.position[0], transform.position[1]],
@@ -63,7 +73,7 @@ pub fn collision_system(world: &mut World, _resources: &mut ResourceContainer) {
                 body_type: body.body_type,
                 collider: ColliderType::Box {
                     width: collider.width,
-                    height: collider.height
+                    height: collider.height,
                 },
             });
         }
@@ -90,7 +100,10 @@ pub fn collision_system(world: &mut World, _resources: &mut ResourceContainer) {
     }
 }
 
-fn detect_collision(data1: &EntityCollisionData, data2: &EntityCollisionData) -> Option<CollisionInfo> {
+fn detect_collision(
+    data1: &EntityCollisionData,
+    data2: &EntityCollisionData,
+) -> Option<CollisionInfo> {
     match (&data1.collider, &data2.collider) {
         (ColliderType::Circle { radius: r1 }, ColliderType::Circle { radius: r2 }) => {
             detect_circle_circle(data1, data2, *r1, *r2)
@@ -101,9 +114,16 @@ fn detect_collision(data1: &EntityCollisionData, data2: &EntityCollisionData) ->
         (ColliderType::Box { width, height }, ColliderType::Circle { radius }) => {
             detect_box_circle(data1, data2, *width, *height, *radius)
         }
-        (ColliderType::Box { width: w1, height: h1 }, ColliderType::Box { width: w2, height: h2 }) => {
-            detect_box_box(data1, data2, *w1, *h1, *w2, *h2)
-        }
+        (
+            ColliderType::Box {
+                width: w1,
+                height: h1,
+            },
+            ColliderType::Box {
+                width: w2,
+                height: h2,
+            },
+        ) => detect_box_box(data1, data2, *w1, *h1, *w2, *h2),
     }
 }
 
@@ -181,15 +201,23 @@ fn detect_circle_box(
             let overlap_y = half_height - (circle_data.position[1] - box_data.position[1]).abs();
 
             if overlap_x < overlap_y {
-                let dir = if circle_data.position[0] < box_data.position[0] { -1.0 } else { 1.0 };
+                let dir = if circle_data.position[0] < box_data.position[0] {
+                    -1.0
+                } else {
+                    1.0
+                };
                 ([dir, 0.0], radius + overlap_x)
             } else {
-                let dir = if circle_data.position[1] < box_data.position[1] { -1.0 } else { 1.0 };
+                let dir = if circle_data.position[1] < box_data.position[1] {
+                    -1.0
+                } else {
+                    1.0
+                };
                 ([0.0, dir], radius + overlap_y)
             }
         } else {
             // Normal case
-            let normal = [-dx / distance, - dy / distance];
+            let normal = [-dx / distance, -dy / distance];
             let penetration = radius - distance;
             (normal, penetration)
         };
@@ -259,10 +287,18 @@ fn detect_box_box(
         let overlap_y = (top1 - bottom2).min(top2 - bottom1);
 
         let (normal, penetration) = if overlap_x < overlap_y {
-            let dir = if data1.position[0] < data2.position[0] { -1.0 } else { 1.0 };
+            let dir = if data1.position[0] < data2.position[0] {
+                -1.0
+            } else {
+                1.0
+            };
             ([dir, 0.0], overlap_x)
         } else {
-            let dir = if data1.position[1] < data2.position[1] { -1.0 } else { 1.0 };
+            let dir = if data1.position[1] < data2.position[1] {
+                -1.0
+            } else {
+                1.0
+            };
             ([0.0, dir], overlap_y)
         };
 
@@ -286,12 +322,9 @@ fn detect_box_box(
     }
 }
 
-fn resolve_collisions(
-    world: &mut World,
-    collisions: Vec<CollisionInfo>,
-) {
-    const CORRECTION_PERCENT: f32 = 1.2;  // Increase position correction even more
-    const SLOP: f32 = 0.0001;  // Reduce slop for better separation
+fn resolve_collisions(world: &mut World, collisions: Vec<CollisionInfo>) {
+    const CORRECTION_PERCENT: f32 = 1.2; // Increase position correction even more
+    const SLOP: f32 = 0.0001; // Reduce slop for better separation
 
     for collision in collisions {
         if collision.penetration < 0.00001 {
@@ -301,8 +334,8 @@ fn resolve_collisions(
         let normal = collision.normal;
 
         // Position correction
-        let correction = ((collision.penetration - SLOP).max(0.0) * CORRECTION_PERCENT) /
-            match (collision.body_type1, collision.body_type2) {
+        let correction = ((collision.penetration - SLOP).max(0.0) * CORRECTION_PERCENT)
+            / match (collision.body_type1, collision.body_type2) {
                 (BodyType::Dynamic, BodyType::Dynamic) => {
                     1.0 / collision.mass1 + 1.0 / collision.mass2
                 }
@@ -314,8 +347,10 @@ fn resolve_collisions(
         // Apply position corrections
         match (collision.body_type1, collision.body_type2) {
             (BodyType::Dynamic, BodyType::Dynamic) => {
-                let ratio1 = (1.0 / collision.mass1) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
-                let ratio2 = (1.0 / collision.mass2) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
+                let ratio1 =
+                    (1.0 / collision.mass1) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
+                let ratio2 =
+                    (1.0 / collision.mass2) / (1.0 / collision.mass1 + 1.0 / collision.mass2);
 
                 if let Ok(mut transform) = world.get::<&mut Transform>(collision.entity1) {
                     transform.position[0] -= normal[0] * correction * ratio1;
@@ -342,18 +377,17 @@ fn resolve_collisions(
         }
 
         // Velocity resolution - need to get velocities first to calculate relative velocity
-        let vel1_linear = world.get::<&Velocity>(collision.entity1)
+        let vel1_linear = world
+            .get::<&Velocity>(collision.entity1)
             .ok()
             .map(|v| v.linear);
-        let vel2_linear = world.get::<&Velocity>(collision.entity2)
+        let vel2_linear = world
+            .get::<&Velocity>(collision.entity2)
             .ok()
             .map(|v| v.linear);
 
         if let (Some(v1_linear), Some(v2_linear)) = (vel1_linear, vel2_linear) {
-            let relative_vel = [
-                v2_linear[0] - v1_linear[0],
-                v2_linear[1] - v1_linear[1],
-            ];
+            let relative_vel = [v2_linear[0] - v1_linear[0], v2_linear[1] - v1_linear[1]];
             let vel_along_normal = relative_vel[0] * normal[0] + relative_vel[1] * normal[1];
 
             // Don't resolve if separating (with small threshold for stability)
@@ -361,8 +395,8 @@ fn resolve_collisions(
                 continue;
             }
 
-            let impulse_scalar = -(1.0 + collision.restitution) * vel_along_normal /
-                match (collision.body_type1, collision.body_type2) {
+            let impulse_scalar = -(1.0 + collision.restitution) * vel_along_normal
+                / match (collision.body_type1, collision.body_type2) {
                     (BodyType::Dynamic, BodyType::Dynamic) => {
                         1.0 / collision.mass1 + 1.0 / collision.mass2
                     }

@@ -2,7 +2,7 @@ use hecs::World;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Gravity, ResourceContainer, Tile, Transform};
+use pixie::{Application, Gravity, ResourceContainer, Sprite, Transform};
 use pixie::{BodyType, BoxCollider, CircleCollider, Force, RigidBody, Velocity};
 
 // systems are now built and owned by the engine; keep module private here
@@ -133,8 +133,9 @@ impl PhysicsApp {
             Transform {
                 position: [x, y, 0.5],
                 size: [width, height],
+                rotation: 0.0,
             },
-            Tile {
+            Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "box".to_string(),
             },
@@ -235,8 +236,9 @@ impl PhysicsApp {
             Transform {
                 position: [pos[0], pos[1], 0.5],
                 size: [ball_size, ball_size],
+                rotation: 0.0,
             },
-            Tile {
+            Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
             },
@@ -247,7 +249,7 @@ impl PhysicsApp {
             },
             Velocity {
                 linear: [velocity_x, velocity_y],
-                angular: 0.0,
+                angular: 2.5,
             },
             Force::default(),
             CircleCollider { radius },
@@ -256,8 +258,9 @@ impl PhysicsApp {
             Transform {
                 position: [pos[0] + ball_size * 0.5, pos[1] - ball_size, 0.5],
                 size: [ball_size, ball_size],
+                rotation: 0.0,
             },
-            Tile {
+            Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
             },
@@ -268,7 +271,7 @@ impl PhysicsApp {
             },
             Velocity {
                 linear: [velocity_x, velocity_y],
-                angular: 0.0,
+                angular: -1.5,
             },
             Force::default(),
             CircleCollider { radius },
@@ -277,8 +280,9 @@ impl PhysicsApp {
             Transform {
                 position: [pos[0] - ball_size * 0.5, pos[1] + ball_size, 0.5],
                 size: [ball_size, ball_size],
+                rotation: 0.0,
             },
-            Tile {
+            Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: "ball".to_string(),
             },
@@ -289,7 +293,7 @@ impl PhysicsApp {
             },
             Velocity {
                 linear: [velocity_x, velocity_y],
-                angular: 0.0,
+                angular: 0.75,
             },
             Force::default(),
             CircleCollider { radius },

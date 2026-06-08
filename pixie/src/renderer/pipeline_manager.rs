@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::renderer::gpu_resource_manager::GPUResourceManager;
 use wgpu::{Device, Face, ShaderModule, TextureFormat, VertexBufferLayout};
 
-use crate::renderer::mesh::{InstanceColorTileRaw, InstanceTileRaw};
+use crate::renderer::mesh::{ColorSpriteInstanceRaw, SpriteInstanceRaw};
 use crate::renderer::texture::Texture;
 use crate::renderer::vertex::Vertex;
 
@@ -122,7 +122,7 @@ impl PipelineManager {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            buffers: &[Vertex::desc(), InstanceTileRaw::desc()],
+            buffers: &[Vertex::desc(), SpriteInstanceRaw::desc()],
             sample_count: 1,
             sampler_mask: 0,
             alpha_to_coverage_enabled: false,
@@ -137,7 +137,7 @@ impl PipelineManager {
         }
         .build(shader, device, default_format, gpu_resource_manager);
         self.pipelines
-            .insert("tile_pl".to_string(), render_pipeline);
+            .insert("sprite_pl".to_string(), render_pipeline);
 
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/font.wgsl"));
@@ -150,7 +150,7 @@ impl PipelineManager {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            buffers: &[Vertex::desc(), InstanceColorTileRaw::desc()],
+            buffers: &[Vertex::desc(), ColorSpriteInstanceRaw::desc()],
             sample_count: 1,
             sampler_mask: 0,
             alpha_to_coverage_enabled: false,

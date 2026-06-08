@@ -93,7 +93,7 @@ The engine owns the `hecs::World`, a `ResourceContainer`, a dispatcher, and the 
 
 Rendering data is collected directly from ECS components:
 
-- `Transform + Tile` entities become sprite/tile instances
+- `Transform + Sprite` entities become sprite instances
 - `Transform + Text + TextStyle` entities become text instances
 - `Camera` is stored as an engine-managed resource
 
@@ -115,7 +115,7 @@ The runtime uses a variable update for general game logic and a fixed 60 Hz step
 1. Add a new workspace member under `examples/` or a separate crate.
 2. Depend on `pixie = { path = "../../pixie" }`.
 3. Implement `Application`.
-4. Spawn entities with shared components such as `Transform`, `Tile`, `Text`, and game-specific components.
+4. Spawn entities with shared components such as `Transform`, `Sprite`, `Text`, and game-specific components.
 5. Insert resources through `ResourceContainer`.
 6. Build a dispatcher with the systems your game needs.
 7. Start the engine with textures passed to `Engine::start`.
@@ -124,7 +124,7 @@ See `examples/flappy_bird/src/main.rs`, `examples/flappy_bird/src/lib.rs`, and `
 
 ## Asset Loading
 
-Textures are loaded into named atlases. A rendered tile references its atlas through `Tile { atlas, uv }`.
+Textures are loaded into named atlases. A rendered sprite references its atlas through `Sprite { atlas, uv }`.
 
 Fonts are loaded by the engine and rasterized at runtime through `FontManager`. Text rendering is driven by ECS `Text` components and uses a version field so unchanged text can be cached.
 
