@@ -303,15 +303,12 @@ impl GPUResourceManager {
         }
     }
 
-    pub fn render<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
+    pub fn render<'a>(&'a self, render_pass: &mut RenderPass<'a>, atlas_names: &'a [String]) {
         self.set_bind_group(render_pass, "camera");
 
-        log::debug!("Rendering {} meshes", self.meshes_by_atlas.len());
-        // Render all registered meshes except font (font is rendered in render_ui)
-        for atlas_name in self.meshes_by_atlas.keys() {
-            if atlas_name != "font" {
-                self.render_meshes(render_pass, atlas_name.clone());
-            }
+        log::debug!("Rendering {} visible tile atlases", atlas_names.len());
+        for atlas_name in atlas_names {
+            self.render_meshes(render_pass, atlas_name);
         }
     }
 

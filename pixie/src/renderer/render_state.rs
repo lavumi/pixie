@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::sync::Arc;
 
@@ -33,8 +32,6 @@ pub struct RenderState {
     aspect_ratio: f32,
     viewport_data: [f32; 6],
 
-    // Track previous frame's atlases to clear removed ones
-    previous_atlases: HashSet<String>,
 }
 impl RenderState {
     pub async fn new(window: Arc<Window>, width: u32, height: u32) -> Self {
@@ -121,7 +118,6 @@ impl RenderState {
             aspect_ratio,
             viewport_data,
             font_manager,
-            previous_atlases: HashSet::new(),
         }
     }
 
@@ -166,42 +162,33 @@ impl RenderState {
             }
         }
     }
-    pub fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) {
+    fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) {
         let camera_buffer = self.gpu_resource_manager.get_buffer("camera_matrix");
         self.queue.write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
     }
 
-    pub fn update_mesh_instance(&mut self, tile_render_data: HashMap<String, Vec<TileRenderData>>) {
-        // Get current atlases
-        let current_atlases: HashSet<String> = tile_render_data.keys().cloned().collect();
+    pub fn update_frame(&mut self, frame: &RenderFrame<'_>) {
+        self.update_camera_buffer(frame.camera_uniform);
+        self.update_mesh_instance(frame);
+        self.update_text_instance(frame.texts);
+    }
 
-        // Clear atlases that existed in previous frame but not in current frame
-        for removed_atlas in self.previous_atlases.difference(&current_atlases) {
-            log::info!("Clearing removed atlas: {}", removed_atlas);
-            self.gpu_resource_manager.update_mesh_instance(
-                removed_atlas.clone(),
-                &self.device,
-                &self.queue,
-                Vec::new()
-            );
-        }
-
-        // Update current atlases
-        for pair in tile_render_data {
-            let instance_data = (pair.1)
+    fn update_mesh_instance(&mut self, frame: &RenderFrame<'_>) {
+        for atlas in frame.tile_atlases {
+            let Some(tile_data) = frame.tile_render_data.get(atlas) else {
+                continue;
+            };
+            let instance_data = tile_data
                     .iter()
                     .map(|data|{
                 data.get_instance_matrix()
             }).collect::<Vec<_>>();
 
-            self.gpu_resource_manager.update_mesh_instance(pair.0, &self.device, &self.queue, instance_data);
+            self.gpu_resource_manager.update_mesh_instance(atlas, &self.device, &self.queue, instance_data);
         }
-
-        // Update previous_atlases for next frame
-        self.previous_atlases = current_atlases;
     }
 
-    pub fn update_text_instance(&mut self, texts: Vec<TextRenderData>) {
+    fn update_text_instance(&mut self, texts: &[TextRenderData]) {
         let tile_instance =  texts
                 .iter()
                 .flat_map(|text|{
@@ -213,7 +200,7 @@ impl RenderState {
 
     }
 
-    pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
                 .texture
@@ -258,7 +245,7 @@ impl RenderState {
 
             let render_pipeline = self.pipeline_manager.get_pipeline("tile_pl");
             render_pass.set_pipeline(render_pipeline);
-            self.gpu_resource_manager.render(&mut render_pass);
+            self.gpu_resource_manager.render(&mut render_pass, frame.tile_atlases);
 
 
             let render_pipeline = self.pipeline_manager.get_pipeline("font_pl");
