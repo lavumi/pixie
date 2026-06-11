@@ -1,6 +1,8 @@
 use anyhow::*;
 use image::GenericImageView;
 
+use crate::{AtlasError, AtlasId};
+
 pub struct Texture {
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
@@ -72,7 +74,7 @@ impl Texture {
     ) -> Result<Self> {
         let img = image::open(src)?;
         // let img = image::load_from_memory(bytes)?;
-        Self::from_image(device, queue, &img, Some(label))
+        Ok(Self::from_image(device, queue, &img, Some(label)))
     }
 
     #[allow(unused)]
@@ -83,7 +85,23 @@ impl Texture {
         label: &str,
     ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
-        Self::from_image(device, queue, &img, Some(label))
+        Ok(Self::from_image(device, queue, &img, Some(label)))
+    }
+
+    pub fn from_atlas_bytes(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bytes: &[u8],
+        atlas: &AtlasId,
+    ) -> Result<Self, AtlasError> {
+        let image = decode_atlas_image(atlas, bytes)?;
+        let texture = Self::from_image(
+            device,
+            queue,
+            &image,
+            Some(atlas.as_str()),
+        );
+        std::result::Result::Ok(texture)
     }
 
     fn from_image(
@@ -91,7 +109,7 @@ impl Texture {
         queue: &wgpu::Queue,
         img: &image::DynamicImage,
         label: Option<&str>,
-    ) -> Result<Self> {
+    ) -> Self {
         let rgba = img.to_rgba8();
         let dimensions = img.dimensions();
 
@@ -129,7 +147,7 @@ impl Texture {
         );
 
 
-        Ok(Self::from_wgpu_texture(texture, device))
+        Self::from_wgpu_texture(texture, device)
         // let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         //     address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -146,5 +164,32 @@ impl Texture {
         //     view,
         //     sampler,
         // })
+    }
+}
+
+fn decode_atlas_image(
+    atlas: &AtlasId,
+    bytes: &[u8],
+) -> Result<image::DynamicImage, AtlasError> {
+    image::load_from_memory(bytes).map_err(|source| AtlasError::InvalidAtlasImage {
+        atlas: atlas.clone(),
+        source,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_image_error_includes_atlas_name() {
+        let atlas = AtlasId::from("broken");
+        let error = decode_atlas_image(&atlas, b"not an image").unwrap_err();
+
+        assert!(matches!(
+            &error,
+            AtlasError::InvalidAtlasImage { atlas, .. } if atlas.as_str() == "broken"
+        ));
+        assert!(error.to_string().contains("broken"));
     }
 }

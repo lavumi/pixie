@@ -1,8 +1,6 @@
 use hecs::World;
 use instant::Instant;
-use std::collections::HashMap;
 use std::sync::Arc;
-use wgpu::SurfaceError;
 use winit::{
     application::ApplicationHandler, dpi::LogicalSize, dpi::PhysicalSize, event::*,
     event_loop::EventLoop, window::Window,
@@ -12,6 +10,7 @@ use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
 use crate::resources::{DeltaTime, ResourceContainer};
+use crate::{AtlasError, TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
 
@@ -32,7 +31,6 @@ pub struct Engine<A: Application> {
     title: String,
     initial_width: u32,
     initial_height: u32,
-    textures_to_load: Option<HashMap<String, &'static [u8]>>,
     #[cfg(target_arch = "wasm32")]
     wasm_pending_rs: Option<std::rc::Rc<std::cell::RefCell<Option<RenderState>>>>,
 }
@@ -88,10 +86,10 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                     self.initial_height,
                 ));
                 block_on(rs.init_resources());
-                if let Some(textures) = self.textures_to_load.take() {
-                    for (name, image_bytes) in textures {
-                        rs.load_texture_atlas(&name, image_bytes);
-                    }
+                if let Err(error) = Self::upload_pending_atlases(&mut self.resources, &mut rs) {
+                    log::error!("{error}");
+                    event_loop.exit();
+                    return;
                 }
                 self.rs = Some(rs);
                 self.size = window.inner_size();
@@ -149,10 +147,13 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                 if self.rs.is_none() {
                                     if let Some(holder) = &self.wasm_pending_rs {
                                         if let Some(mut rs) = holder.borrow_mut().take() {
-                                            if let Some(textures) = self.textures_to_load.take() {
-                                                for (name, image_bytes) in textures {
-                                                    rs.load_texture_atlas(&name, image_bytes);
-                                                }
+                                            if let Err(error) = Self::upload_pending_atlases(
+                                                &mut self.resources,
+                                                &mut rs,
+                                            ) {
+                                                log::error!("{error}");
+                                                event_loop.exit();
+                                                return;
                                             }
                                             self.rs = Some(rs);
                                         }
@@ -190,14 +191,26 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
 
                             match self.render() {
                                 Ok(_) => {}
-                                Err(SurfaceError::Lost | SurfaceError::Outdated) => {
+                                Err(RenderError::Surface(
+                                    wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                )) => {
                                     if let Some(rs) = &mut self.rs {
                                         rs.resize(self.size);
                                     }
                                 }
-                                Err(SurfaceError::OutOfMemory) => event_loop.exit(),
-                                Err(SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                                Err(SurfaceError::Other) => log::warn!("Surface error: other"),
+                                Err(RenderError::Surface(wgpu::SurfaceError::OutOfMemory)) => {
+                                    event_loop.exit()
+                                }
+                                Err(RenderError::Surface(wgpu::SurfaceError::Timeout)) => {
+                                    log::warn!("Surface timeout")
+                                }
+                                Err(RenderError::Surface(wgpu::SurfaceError::Other)) => {
+                                    log::warn!("Surface error: other")
+                                }
+                                Err(RenderError::Atlas(error)) => {
+                                    log::error!("{error}");
+                                    event_loop.exit();
+                                }
                             }
                         }
                         _ => {}
@@ -235,6 +248,7 @@ impl<A: Application> Engine<A> {
             aspect_ratio,
         ));
         resources.insert(DeltaTime(0.0));
+        resources.insert(TextureAtlasRegistry::default());
 
         // Initialize application (can adjust camera via resources)
         app.init(&mut world, &mut resources);
@@ -254,21 +268,11 @@ impl<A: Application> Engine<A> {
             title: title.into(),
             initial_width: width,
             initial_height: height,
-            textures_to_load: None,
             #[cfg(target_arch = "wasm32")]
             wasm_pending_rs: None,
         };
 
         (engine, event_loop)
-    }
-
-    /// Load multiple textures at once
-    pub fn load_textures(&mut self, textures: HashMap<String, &'static [u8]>) {
-        for (name, image_bytes) in textures {
-            if let Some(rs) = &mut self.rs {
-                rs.load_texture_atlas(&name, image_bytes);
-            }
-        }
     }
 
     /// Start the engine - creates and runs in one go
@@ -277,7 +281,7 @@ impl<A: Application> Engine<A> {
         title: T,
         width: u32,
         height: u32,
-        textures: Option<HashMap<String, &'static [u8]>>,
+        texture_atlases: Vec<TextureAtlasAsset>,
         dispatcher: Box<dyn UnifiedDispatcher + 'static>,
     ) {
         let event_loop = EventLoop::new().unwrap();
@@ -293,6 +297,14 @@ impl<A: Application> Engine<A> {
             aspect_ratio,
         ));
         resources.insert(DeltaTime(0.0));
+        let mut atlas_registry = TextureAtlasRegistry::default();
+        for asset in texture_atlases {
+            if let Err(error) = atlas_registry.register(asset) {
+                log::error!("{error}");
+                return;
+            }
+        }
+        resources.insert(atlas_registry);
 
         // Initialize application (can adjust camera via resources)
         let mut app = app;
@@ -313,7 +325,6 @@ impl<A: Application> Engine<A> {
             title: title.into(),
             initial_width: width,
             initial_height: height,
-            textures_to_load: textures,
             #[cfg(target_arch = "wasm32")]
             wasm_pending_rs: None,
         };
@@ -338,12 +349,37 @@ impl<A: Application> Engine<A> {
         self.app.update(&mut self.world, &mut self.resources, dt);
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn upload_pending_atlases(
+        resources: &mut ResourceContainer,
+        render_state: &mut RenderState,
+    ) -> Result<(), AtlasError> {
+        let registry = resources
+            .get_mut::<TextureAtlasRegistry>()
+            .expect("TextureAtlasRegistry resource not found");
+        if let Some(error) = registry.take_error() {
+            return Err(error);
+        }
+        let pending = registry.take_pending();
+
+        for asset in pending {
+            render_state.load_texture_atlas(asset.id(), asset.bytes())?;
+            resources
+                .get_mut::<TextureAtlasRegistry>()
+                .expect("TextureAtlasRegistry resource not found")
+                .mark_loaded(asset.id().clone());
+        }
+        Ok(())
+    }
+
+    fn render(&mut self) -> Result<(), RenderError> {
         let rs = match &mut self.rs {
             Some(rs) => rs,
             None => return Ok(()),
         };
-        let frame = self.render_extractor.extract(&self.world, &self.resources);
+        Self::upload_pending_atlases(&mut self.resources, rs)?;
+        let frame = self
+            .render_extractor
+            .extract(&self.world, &self.resources)?;
         rs.render_frame(&frame)
     }
 }

@@ -1,5 +1,4 @@
 pub struct Mesh {
-    pub atlas_name: String,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub instance_buffer: Option<wgpu::Buffer>,

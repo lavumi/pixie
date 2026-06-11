@@ -1,4 +1,5 @@
 use crate::renderer::mesh::SpriteInstanceRaw;
+use crate::AtlasId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -19,16 +20,16 @@ pub struct SpriteRenderData {
 
 pub struct RenderFrame<'a> {
     camera_uniform: [[f32; 4]; 4],
-    sprite_render_data: &'a HashMap<String, Vec<SpriteRenderData>>,
-    sprite_atlases: &'a [String],
+    sprite_render_data: &'a HashMap<AtlasId, Vec<SpriteRenderData>>,
+    sprite_atlases: &'a [AtlasId],
     texts: &'a [TextRenderData],
 }
 
 impl<'a> RenderFrame<'a> {
     pub(crate) fn new(
         camera_uniform: [[f32; 4]; 4],
-        sprite_render_data: &'a HashMap<String, Vec<SpriteRenderData>>,
-        sprite_atlases: &'a [String],
+        sprite_render_data: &'a HashMap<AtlasId, Vec<SpriteRenderData>>,
+        sprite_atlases: &'a [AtlasId],
         texts: &'a [TextRenderData],
     ) -> Self {
         Self {
@@ -43,16 +44,16 @@ impl<'a> RenderFrame<'a> {
         self.camera_uniform
     }
 
-    pub fn sprite_batches(&self) -> impl Iterator<Item = (&str, &[SpriteRenderData])> + '_ {
+    pub fn sprite_batches(&self) -> impl Iterator<Item = (&AtlasId, &[SpriteRenderData])> + '_ {
         self.sprite_atlases.iter().filter_map(|atlas| {
             self.sprite_render_data
                 .get(atlas)
-                .map(|sprites| (atlas.as_str(), sprites.as_slice()))
+                .map(|sprites| (atlas, sprites.as_slice()))
         })
     }
 
-    pub fn sprite_atlases(&self) -> impl Iterator<Item = &str> + '_ {
-        self.sprite_atlases.iter().map(String::as_str)
+    pub fn sprite_atlases(&self) -> impl Iterator<Item = &AtlasId> + '_ {
+        self.sprite_atlases.iter()
     }
 
     pub fn texts(&self) -> &[TextRenderData] {

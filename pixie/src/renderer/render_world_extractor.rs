@@ -6,6 +6,7 @@ use hecs::{Entity, World};
 use crate::components::{Sprite, Text, TextStyle, Transform};
 use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
+use crate::{AtlasError, AtlasId, TextureAtlasRegistry};
 
 struct CachedText {
     version: u64,
@@ -14,9 +15,9 @@ struct CachedText {
 
 #[derive(Default)]
 pub struct RenderWorldExtractor {
-    sprite_render_data: HashMap<String, Vec<SpriteRenderData>>,
-    sprite_atlases: Vec<String>,
-    active_sprite_atlases: HashSet<String>,
+    sprite_render_data: HashMap<AtlasId, Vec<SpriteRenderData>>,
+    sprite_atlases: Vec<AtlasId>,
+    active_sprite_atlases: HashSet<AtlasId>,
     text_cache: HashMap<Entity, CachedText>,
     text_render_buffer: Vec<TextRenderData>,
     cache_cleanup_counter: u32,
@@ -38,38 +39,56 @@ impl RenderWorldExtractor {
         &'a mut self,
         world: &World,
         resources: &ResourceContainer,
-    ) -> RenderFrame<'a> {
+    ) -> Result<RenderFrame<'a>, AtlasError> {
         let camera_uniform = resources
             .get::<crate::resources::Camera>()
             .expect("Camera resource not found")
             .get_view_proj();
 
-        self.extract_sprites(world);
+        self.extract_sprites(world, resources)?;
         self.extract_texts(world);
 
-        RenderFrame::new(
+        Ok(RenderFrame::new(
             camera_uniform,
             &self.sprite_render_data,
             &self.sprite_atlases,
             &self.text_render_buffer,
-        )
+        ))
     }
 
-    fn extract_sprites(&mut self, world: &World) {
+    fn extract_sprites(
+        &mut self,
+        world: &World,
+        resources: &ResourceContainer,
+    ) -> Result<(), AtlasError> {
+        let registry = resources
+            .get::<TextureAtlasRegistry>()
+            .expect("TextureAtlasRegistry resource not found");
+
         for sprites in self.sprite_render_data.values_mut() {
             sprites.clear();
         }
         self.sprite_atlases.clear();
         self.active_sprite_atlases.clear();
 
-        for (_entity, (transform, sprite)) in world.query::<(&Transform, &Sprite)>().iter() {
-            if self.active_sprite_atlases.insert(sprite.atlas.clone()) {
-                self.sprite_atlases.push(sprite.atlas.clone());
+        for (entity, (transform, sprite)) in world.query::<(&Transform, &Sprite)>().iter() {
+            if !registry.is_loaded(&sprite.atlas) {
+                return Err(AtlasError::MissingAtlas {
+                    atlas: sprite.atlas.clone(),
+                    entity,
+                });
+            }
+
+            if !self.active_sprite_atlases.contains(&sprite.atlas) {
+                let atlas = sprite.atlas.clone();
+                self.active_sprite_atlases.insert(atlas.clone());
+                self.sprite_atlases.push(atlas.clone());
+                self.sprite_render_data.entry(atlas).or_default();
             }
 
             self.sprite_render_data
-                .entry(sprite.atlas.clone())
-                .or_default()
+                .get_mut(&sprite.atlas)
+                .expect("active sprite atlas must have a render batch")
                 .push(SpriteRenderData {
                     position: transform.position,
                     size: transform.size,
@@ -77,6 +96,8 @@ impl RenderWorldExtractor {
                     uv: sprite.uv,
                 });
         }
+
+        Ok(())
     }
 
     fn extract_texts(&mut self, world: &World) {
@@ -133,6 +154,11 @@ mod tests {
     fn resources_with_camera() -> ResourceContainer {
         let mut resources = ResourceContainer::new();
         resources.insert(Camera::init_orthographic(10.0, 1.0));
+        let mut registry = TextureAtlasRegistry::default();
+        for atlas in ["main", "first", "second"] {
+            registry.mark_loaded(AtlasId::from(atlas));
+        }
+        resources.insert(registry);
         resources
     }
 
@@ -142,7 +168,7 @@ mod tests {
         world.spawn((
             Transform::with_rotation([2.0, 3.0, 0.5], [4.0, 5.0], 0.25),
             Sprite {
-                atlas: "main".to_string(),
+                atlas: "main".into(),
                 uv: [0.0, 0.5, 0.5, 1.0],
             },
         ));
@@ -161,11 +187,11 @@ mod tests {
 
         let resources = resources_with_camera();
         let mut extractor = RenderWorldExtractor::default();
-        let frame = extractor.extract(&world, &resources);
+        let frame = extractor.extract(&world, &resources).unwrap();
         let batches = frame.sprite_batches().collect::<Vec<_>>();
 
         assert_eq!(batches.len(), 1);
-        assert_eq!(batches[0].0, "main");
+        assert_eq!(batches[0].0.as_str(), "main");
         assert_eq!(batches[0].1.len(), 1);
         assert_eq!(batches[0].1[0].position, [2.0, 3.0, 0.5]);
         assert_eq!(batches[0].1[0].size, [4.0, 5.0]);
@@ -185,7 +211,7 @@ mod tests {
         let entity = world.spawn((
             Transform::default(),
             Sprite {
-                atlas: "main".to_string(),
+                atlas: "main".into(),
                 uv: [0.0, 1.0, 0.0, 1.0],
             },
         ));
@@ -193,15 +219,28 @@ mod tests {
         let mut extractor = RenderWorldExtractor::default();
 
         {
-            let frame = extractor.extract(&world, &resources);
+            let frame = extractor.extract(&world, &resources).unwrap();
             assert_eq!(frame.sprite_batches().count(), 1);
         }
+        let capacity_before = extractor
+            .sprite_render_data
+            .get(&AtlasId::from("main"))
+            .unwrap()
+            .capacity();
 
         world.despawn(entity).unwrap();
-        let frame = extractor.extract(&world, &resources);
+        let frame = extractor.extract(&world, &resources).unwrap();
 
         assert_eq!(frame.sprite_batches().count(), 0);
         assert_eq!(frame.sprite_atlases().count(), 0);
+        assert_eq!(
+            extractor
+                .sprite_render_data
+                .get(&AtlasId::from("main"))
+                .unwrap()
+                .capacity(),
+            capacity_before
+        );
     }
 
     #[test]
@@ -211,17 +250,17 @@ mod tests {
             world.spawn((
                 Transform::default(),
                 Sprite {
-                    atlas: atlas.to_string(),
+                    atlas: atlas.into(),
                     uv: [0.0, 1.0, 0.0, 1.0],
                 },
             ));
         }
         let resources = resources_with_camera();
         let mut extractor = RenderWorldExtractor::default();
-        let frame = extractor.extract(&world, &resources);
+        let frame = extractor.extract(&world, &resources).unwrap();
         let batch_sizes = frame
             .sprite_batches()
-            .map(|(atlas, sprites)| (atlas, sprites.len()))
+            .map(|(atlas, sprites)| (atlas.as_str(), sprites.len()))
             .collect::<HashMap<_, _>>();
 
         assert_eq!(batch_sizes.len(), 2);
@@ -234,7 +273,7 @@ mod tests {
         let world = World::new();
         let resources = resources_with_camera();
         let mut extractor = RenderWorldExtractor::default();
-        let frame = extractor.extract(&world, &resources);
+        let frame = extractor.extract(&world, &resources).unwrap();
 
         assert_eq!(frame.sprite_batches().count(), 0);
         assert_eq!(frame.sprite_atlases().count(), 0);
@@ -243,5 +282,32 @@ mod tests {
             frame.camera_uniform(),
             resources.get::<Camera>().unwrap().get_view_proj()
         );
+    }
+
+    #[test]
+    fn missing_atlas_reports_entity_and_name() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Transform::default(),
+            Sprite {
+                atlas: "missing".into(),
+                uv: [0.0, 1.0, 0.0, 1.0],
+            },
+        ));
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+
+        let error = match extractor.extract(&world, &resources) {
+            Ok(_) => panic!("missing atlas should fail extraction"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            AtlasError::MissingAtlas {
+                atlas,
+                entity: error_entity,
+            } if atlas.as_str() == "missing" && error_entity == entity
+        ));
     }
 }

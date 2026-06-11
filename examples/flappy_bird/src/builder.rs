@@ -11,7 +11,7 @@ pub fn background(world: &mut World) {
     world.spawn((
         Sprite {
             uv: [0.0, 1.0, 0.0, 1.0],
-            atlas: "bg".to_string(),
+            atlas: "bg".into(),
         },
         Transform {
             position: [0., 1., 0.2],
@@ -26,7 +26,7 @@ pub fn background(world: &mut World) {
     world.spawn((
         Sprite {
             uv: [0.0, 1.0, 0.0, 1.0],
-            atlas: "bg".to_string(),
+            atlas: "bg".into(),
         },
         Transform {
             position: [16., 1., 0.2],
@@ -44,7 +44,7 @@ pub fn background(world: &mut World) {
         world.spawn((
             Sprite {
                 uv: [0.0, 0.125, 0.75, 1.0],
-                atlas: "tile".to_string(),
+                atlas: "tile".into(),
             },
             Transform {
                 position: [pos, -8., 0.2],
@@ -69,7 +69,7 @@ pub fn pipe(world: &mut World, pos: f32) {
     world.spawn((
         Sprite {
             uv: [0.0, 0.25, 0., 0.25],
-            atlas: "tile".to_string(),
+            atlas: "tile".into(),
         },
         Transform {
             position: [pos, rand - 6.0, 0.3],
@@ -87,7 +87,7 @@ pub fn pipe(world: &mut World, pos: f32) {
     world.spawn((
         Sprite {
             uv: [0.0, 0.25, 0.25, 0.25],
-            atlas: "tile".to_string(),
+            atlas: "tile".into(),
         },
         Transform {
             position: [pos, rand * 0.5 - 7.0, 0.3],
@@ -104,7 +104,7 @@ pub fn pipe(world: &mut World, pos: f32) {
     world.spawn((
         Sprite {
             uv: [0.0, 0.25, 0.5, 0.75],
-            atlas: "tile".to_string(),
+            atlas: "tile".into(),
         },
         Transform {
             position: [pos, rand + HOLE_SIZE - 4.0, 0.3],
@@ -121,7 +121,7 @@ pub fn pipe(world: &mut World, pos: f32) {
     world.spawn((
         Sprite {
             uv: [0.0, 0.25, 0.5, 0.5],
-            atlas: "tile".to_string(),
+            atlas: "tile".into(),
         },
         Transform {
             position: [pos, (rand + HOLE_SIZE - 4.0) * 0.5 + 5.5, 0.3],
@@ -150,7 +150,7 @@ pub fn ai_player_with_resources(world: &mut World, resources: &mut ResourceConta
     world.spawn((
         Sprite {
             uv: [0.0, 0.25, 0.0, 1.0],
-            atlas: "player".to_string(),
+            atlas: "player".into(),
         },
         Transform {
             position: [0., 0., 0.3],

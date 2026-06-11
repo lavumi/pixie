@@ -30,11 +30,11 @@ pub async fn start() {
 
     let app = PhysicsApp::default();
     let dispatcher = system::build();
-    
-    // Load textures
-    let mut textures = std::collections::HashMap::new();
-    textures.insert("ball".to_string(), include_bytes!("../assets/circle.png") as &[u8]);
-    textures.insert("box".to_string(), include_bytes!("../assets/box.png") as &[u8]);
-    
-    pixie::Engine::start(app, title, width, height, Some(textures), dispatcher).await;
+
+    let texture_atlases = vec![
+        pixie::TextureAtlasAsset::from_static("ball", include_bytes!("../assets/circle.png")),
+        pixie::TextureAtlasAsset::from_static("box", include_bytes!("../assets/box.png")),
+    ];
+
+    pixie::Engine::start(app, title, width, height, texture_atlases, dispatcher).await;
 }

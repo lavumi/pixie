@@ -137,7 +137,7 @@ impl PhysicsApp {
             },
             Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
-                atlas: "box".to_string(),
+                atlas: "box".into(),
             },
             RigidBody {
                 body_type: BodyType::Static,
@@ -240,7 +240,7 @@ impl PhysicsApp {
             },
             Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
-                atlas: "ball".to_string(),
+                atlas: "ball".into(),
             },
             RigidBody {
                 body_type: BodyType::Dynamic,
@@ -262,7 +262,7 @@ impl PhysicsApp {
             },
             Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
-                atlas: "ball".to_string(),
+                atlas: "ball".into(),
             },
             RigidBody {
                 body_type: BodyType::Dynamic,
@@ -284,7 +284,7 @@ impl PhysicsApp {
             },
             Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
-                atlas: "ball".to_string(),
+                atlas: "ball".into(),
             },
             RigidBody {
                 body_type: BodyType::Dynamic,

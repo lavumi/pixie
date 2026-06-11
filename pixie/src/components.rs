@@ -24,7 +24,7 @@ impl Default for Collider {
 #[derive(Clone)]
 pub struct Sprite {
     pub uv: [f32; 4],
-    pub atlas: String,
+    pub atlas: AtlasId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -173,3 +173,4 @@ impl Default for BoxCollider {
         }
     }
 }
+use crate::AtlasId;

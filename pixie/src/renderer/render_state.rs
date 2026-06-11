@@ -8,6 +8,7 @@ use crate::renderer::gpu_resource_manager::GPUResourceManager;
 use crate::renderer::pipeline_manager::PipelineManager;
 use crate::renderer::render_input_data::*;
 use crate::renderer::texture;
+use crate::renderer::RenderError;
 
 pub struct RenderState {
     pub device: wgpu::Device,
@@ -136,9 +137,13 @@ impl RenderState {
     }
 
     /// Load a texture atlas and auto-create a quad mesh for rendering
-    pub fn load_texture_atlas(&mut self, name: &str, image_bytes: &[u8]) {
+    pub(crate) fn load_texture_atlas(
+        &mut self,
+        name: &crate::AtlasId,
+        image_bytes: &[u8],
+    ) -> Result<(), crate::AtlasError> {
         self.gpu_resource_manager
-            .load_texture_atlas(name, image_bytes, &self.device, &self.queue);
+            .load_texture_atlas(name, image_bytes, &self.device, &self.queue)
     }
 
     #[allow(dead_code)]
@@ -185,13 +190,17 @@ impl RenderState {
             .write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
     }
 
-    fn update_frame(&mut self, frame: &RenderFrame<'_>) {
+    fn update_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), crate::AtlasError> {
         self.update_camera_buffer(frame.camera_uniform());
-        self.update_sprite_instances(frame);
+        self.update_sprite_instances(frame)?;
         self.update_text_instance(frame.texts());
+        Ok(())
     }
 
-    fn update_sprite_instances(&mut self, frame: &RenderFrame<'_>) {
+    fn update_sprite_instances(
+        &mut self,
+        frame: &RenderFrame<'_>,
+    ) -> Result<(), crate::AtlasError> {
         for (atlas, sprite_data) in frame.sprite_batches() {
             let instance_data = sprite_data
                 .iter()
@@ -203,8 +212,9 @@ impl RenderState {
                 &self.device,
                 &self.queue,
                 instance_data,
-            );
+            )?;
         }
+        Ok(())
     }
 
     fn update_text_instance(&mut self, texts: &[TextRenderData]) {
@@ -214,14 +224,13 @@ impl RenderState {
             .collect::<Vec<_>>();
 
         self.gpu_resource_manager.update_color_sprite_instances(
-            "font",
             &self.device,
             &self.queue,
             sprite_instances,
         );
     }
 
-    fn render(&self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
+    fn render(&self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -269,7 +278,7 @@ impl RenderState {
             let render_pipeline = self.pipeline_manager.get_pipeline("sprite_pl");
             render_pass.set_pipeline(render_pipeline);
             self.gpu_resource_manager
-                .render(&mut render_pass, frame.sprite_atlases());
+                .render(&mut render_pass, frame.sprite_atlases())?;
 
             let render_pipeline = self.pipeline_manager.get_pipeline("font_pl");
             render_pass.set_pipeline(render_pipeline);
@@ -281,8 +290,8 @@ impl RenderState {
         Ok(())
     }
 
-    pub fn render_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
-        self.update_frame(frame);
+    pub fn render_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
+        self.update_frame(frame)?;
         self.render(frame)
     }
 }

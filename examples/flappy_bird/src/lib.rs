@@ -17,7 +17,7 @@ mod game_configs;
 mod wasm_bindings;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
-pub async fn start(){
+pub async fn start() {
     let title = "wgpu_wasm";
     let width = game_configs::SCREEN_SIZE[0];
     let height = game_configs::SCREEN_SIZE[1];
@@ -33,13 +33,12 @@ pub async fn start(){
 
     let app = FlappyApplication::default();
     let dispatcher = system::build();
-    
-    // Load game-specific textures
-    let mut textures = std::collections::HashMap::new();
-    textures.insert("tile".to_string(), include_bytes!("../assets/img/tile.png") as &[u8]);
-    textures.insert("bg".to_string(), include_bytes!("../assets/img/bg.png") as &[u8]);
-    textures.insert("player".to_string(), include_bytes!("../assets/img/player.png") as &[u8]);
-    
-    pixie::Engine::start(app, title, width, height, Some(textures), dispatcher).await;
-}
 
+    let texture_atlases = vec![
+        pixie::TextureAtlasAsset::from_static("tile", include_bytes!("../assets/img/tile.png")),
+        pixie::TextureAtlasAsset::from_static("bg", include_bytes!("../assets/img/bg.png")),
+        pixie::TextureAtlasAsset::from_static("player", include_bytes!("../assets/img/player.png")),
+    ];
+
+    pixie::Engine::start(app, title, width, height, texture_atlases, dispatcher).await;
+}

@@ -118,13 +118,25 @@ The runtime uses a variable update for general game logic and a fixed 60 Hz step
 4. Spawn entities with shared components such as `Transform`, `Sprite`, `Text`, and game-specific components.
 5. Insert resources through `ResourceContainer`.
 6. Build a dispatcher with the systems your game needs.
-7. Start the engine with textures passed to `Engine::start`.
+7. Start the engine with `TextureAtlasAsset` values passed to `Engine::start`.
 
 See `examples/flappy_bird/src/main.rs`, `examples/flappy_bird/src/lib.rs`, and `examples/physics_demo/src/main.rs` for working startup patterns.
 
 ## Asset Loading
 
-Textures are loaded into named atlases. A rendered sprite references its atlas through `Sprite { atlas, uv }`.
+Textures are registered with an `AtlasId` and loaded through `TextureAtlasAsset`:
+
+```rust
+let atlases = vec![TextureAtlasAsset::from_static(
+    "player",
+    include_bytes!("../assets/player.png"),
+)];
+```
+
+A sprite references the same ID with `Sprite { atlas: "player".into(), uv }`.
+Games can register runtime-owned image bytes through the engine-managed
+`TextureAtlasRegistry` resource. Duplicate IDs, invalid images, and sprites
+referencing unloaded IDs produce typed atlas errors instead of renderer panics.
 
 Fonts are loaded by the engine and rasterized at runtime through `FontManager`. Text rendering is driven by ECS `Text` components and uses a version field so unchanged text can be cached.
 

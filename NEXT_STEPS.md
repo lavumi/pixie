@@ -52,9 +52,9 @@ World + ResourceContainer
 이 방향은 유지하는 것이 좋습니다. 다음 개선 후보:
 
 - ~~`RenderFrame`과 extractor API의 소유권/수명 설계 재검토~~
-- atlas 이름 `String` clone 최소화
+- ~~atlas 이름 `String` clone 최소화~~
 - sprite별 CPU buffer와 GPU instance buffer capacity 재사용 정책 정리
-- 없는 atlas를 참조했을 때 panic 대신 명확한 오류 제공
+- ~~없는 atlas를 참조했을 때 panic 대신 명확한 오류 제공~~
 - visibility, render layer, draw order를 어느 계층에서 처리할지 결정
 - renderer와 extractor를 독립적으로 테스트할 수 있는 경계 마련
 

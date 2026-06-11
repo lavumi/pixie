@@ -9,13 +9,16 @@ use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, RenderPass};
 use crate::renderer::builder::make_quad_mesh;
 use crate::renderer::mesh::{ColorSpriteInstanceRaw, Mesh, SpriteInstanceRaw};
 use crate::renderer::texture::Texture;
+use crate::{AtlasError, AtlasId};
 
 #[derive(Default)]
 pub struct GPUResourceManager {
     bind_group_layouts: HashMap<String, Arc<BindGroupLayout>>,
     bind_groups: HashMap<String, HashMap<u32, Arc<BindGroup>>>,
     buffers: HashMap<String, Arc<Buffer>>,
-    meshes_by_atlas: HashMap<String, Mesh>,
+    atlas_bind_groups: HashMap<AtlasId, Arc<BindGroup>>,
+    meshes_by_atlas: HashMap<AtlasId, Mesh>,
+    ui_mesh: Option<Mesh>,
 }
 
 impl GPUResourceManager {
@@ -27,18 +30,35 @@ impl GPUResourceManager {
     /// Load a texture atlas and automatically create a default quad mesh for it
     pub fn load_texture_atlas(
         &mut self,
-        name: &str,
+        name: &AtlasId,
         image_bytes: &[u8],
         device: &Device,
         queue: &Queue,
-    ) {
-        // Load texture
-        let texture = Texture::from_bytes(device, queue, image_bytes, name).unwrap();
-        self.make_bind_group(name, texture, device);
+    ) -> Result<(), AtlasError> {
+        let texture = Texture::from_atlas_bytes(device, queue, image_bytes, name)?;
+        let texture_bind_group_layout = self
+            .get_bind_group_layout("texture_bind_group_layout")
+            .expect("texture bind group layout must be initialized");
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                },
+            ],
+            label: Some(name.as_str()),
+        });
 
-        // Auto-create mesh
-        let mesh = make_quad_mesh(device, name.to_string());
-        self.add_mesh(name, mesh);
+        self.atlas_bind_groups
+            .insert(name.clone(), Arc::new(bind_group));
+        self.meshes_by_atlas
+            .insert(name.clone(), make_quad_mesh(device));
+        Ok(())
     }
 
     fn init_base_layouts(&mut self, device: &Device) {
@@ -188,28 +208,27 @@ impl GPUResourceManager {
         self.bind_group_layouts.get(&key).cloned()
     }
 
-    pub fn add_mesh<T: Into<String>>(&mut self, name: T, mesh: Mesh) {
-        let name = name.into();
-        if self.meshes_by_atlas.contains_key(&name) {
-            panic!("Mesh already exists for atlas: {}", name);
-        }
-        self.meshes_by_atlas.insert(name, mesh);
-    }
-
-    fn render_meshes<'a, T: Into<String>>(&'a self, render_pass: &mut RenderPass<'a>, name: T) {
-        let name_str = name.into();
-        // log::info!("render_meshes: {}", name_str);
-        let mesh = self.meshes_by_atlas.get(&name_str).unwrap();
+    fn render_atlas_mesh<'a>(
+        &'a self,
+        render_pass: &mut RenderPass<'a>,
+        atlas: &AtlasId,
+    ) -> Result<(), AtlasError> {
+        let mesh = self
+            .meshes_by_atlas
+            .get(atlas)
+            .ok_or_else(|| AtlasError::MissingGpuAtlas {
+                atlas: atlas.clone(),
+            })?;
 
         match mesh.instance_buffer {
-            None => {
-                // render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                // render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                // render_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
-            }
+            None => {}
             Some(_) => {
-                //코드가 좀 안예쁘군...
-                self.set_bind_group(render_pass, mesh.atlas_name.clone());
+                let bind_group = self.atlas_bind_groups.get(atlas).ok_or_else(|| {
+                    AtlasError::MissingGpuAtlas {
+                        atlas: atlas.clone(),
+                    }
+                })?;
+                render_pass.set_bind_group(1, Some(bind_group.as_ref()), &[]);
 
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, mesh.instance_buffer.as_ref().unwrap().slice(..));
@@ -218,6 +237,7 @@ impl GPUResourceManager {
                 render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.num_instances);
             }
         }
+        Ok(())
     }
 
     fn add_buffer<T: Into<String>>(&mut self, name: T, buffer: Buffer) {
@@ -232,18 +252,22 @@ impl GPUResourceManager {
         self.buffers.get(&name.into()).unwrap().clone()
     }
 
-    pub fn update_sprite_instances<T: Into<String>>(
+    pub fn update_sprite_instances(
         &mut self,
-        name: T,
+        atlas: &AtlasId,
         device: &Device,
         queue: &Queue,
         sprite_instances: Vec<SpriteInstanceRaw>,
-    ) {
-        let name_str = name.into();
-        let mesh = self.meshes_by_atlas.get_mut(&name_str).unwrap();
+    ) -> Result<(), AtlasError> {
+        let mesh =
+            self.meshes_by_atlas
+                .get_mut(atlas)
+                .ok_or_else(|| AtlasError::MissingGpuAtlas {
+                    atlas: atlas.clone(),
+                })?;
         if sprite_instances.is_empty() {
             mesh.num_instances = 0;
-            return;
+            return Ok(());
         }
         if mesh.num_instances == sprite_instances.len() as u32 {
             queue.write_buffer(
@@ -254,28 +278,30 @@ impl GPUResourceManager {
         } else {
             log::debug!(
                 "update_sprite_instances {} before : {} , after : {}",
-                name_str,
+                atlas,
                 mesh.num_instances,
                 sprite_instances.len()
             );
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(format!("Instance Buffer {}", name_str).as_str()),
+                label: Some(format!("Instance Buffer {atlas}").as_str()),
                 contents: bytemuck::cast_slice(&sprite_instances),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
             mesh.replace_instance(instance_buffer, sprite_instances.len() as u32);
         }
+        Ok(())
     }
 
-    pub fn update_color_sprite_instances<T: Into<String>>(
+    pub fn update_color_sprite_instances(
         &mut self,
-        name: T,
         device: &Device,
         queue: &Queue,
         sprite_instances: Vec<ColorSpriteInstanceRaw>,
     ) {
-        let name_str = name.into();
-        let mesh = self.meshes_by_atlas.get_mut(&name_str).unwrap();
+        let mesh = self
+            .ui_mesh
+            .as_mut()
+            .expect("UI mesh must be initialized before text rendering");
         if sprite_instances.is_empty() {
             mesh.num_instances = 0;
             return;
@@ -290,12 +316,12 @@ impl GPUResourceManager {
         } else {
             log::debug!(
                 "update_color_sprite_instances {} before : {} , after : {}",
-                name_str,
+                "font",
                 mesh.num_instances,
                 sprite_instances.len()
             );
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(format!("Instance Buffer {}", name_str).as_str()),
+                label: Some("Instance Buffer font"),
                 contents: bytemuck::cast_slice(&sprite_instances),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
@@ -306,13 +332,14 @@ impl GPUResourceManager {
     pub fn render<'a, 'b>(
         &'a self,
         render_pass: &mut RenderPass<'a>,
-        atlas_names: impl IntoIterator<Item = &'b str>,
-    ) {
+        atlas_names: impl IntoIterator<Item = &'b AtlasId>,
+    ) -> Result<(), AtlasError> {
         self.set_bind_group(render_pass, "camera");
 
         for atlas_name in atlas_names {
-            self.render_meshes(render_pass, atlas_name);
+            self.render_atlas_mesh(render_pass, atlas_name)?;
         }
+        Ok(())
     }
 
     pub async fn init_ui_atlas_from_texture(&mut self, texture: wgpu::Texture, device: &Device) {
@@ -321,10 +348,21 @@ impl GPUResourceManager {
     }
 
     pub fn init_ui_meshes(&mut self, device: &Device) {
-        self.add_mesh("font", make_quad_mesh(device, "font".to_string()));
+        self.ui_mesh = Some(make_quad_mesh(device));
     }
 
     pub fn render_ui<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
-        self.render_meshes(render_pass, "font");
+        let mesh = self
+            .ui_mesh
+            .as_ref()
+            .expect("UI mesh must be initialized before text rendering");
+        if mesh.instance_buffer.is_none() {
+            return;
+        }
+        self.set_bind_group(render_pass, "font");
+        render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, mesh.instance_buffer.as_ref().unwrap().slice(..));
+        render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.num_instances);
     }
 }

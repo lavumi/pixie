@@ -1,4 +1,5 @@
 pub mod application;
+pub mod atlas;
 pub mod components;
 pub mod dispatcher;
 pub mod engine;
@@ -8,6 +9,7 @@ pub mod systems;
 
 // Re-export commonly used items
 pub use application::*;
+pub use atlas::*;
 pub use components::*;
 pub use dispatcher::*;
 pub use engine::*;

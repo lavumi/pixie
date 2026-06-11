@@ -1,8 +1,10 @@
+pub use error::RenderError;
 pub use render_input_data::*;
 pub use render_state::RenderState;
 pub use render_world_extractor::RenderWorldExtractor;
 
 mod builder;
+mod error;
 mod font_manager;
 mod gpu_resource_manager;
 mod mesh;

@@ -3,7 +3,7 @@ use crate::renderer::vertex::Vertex;
 use wgpu::util::DeviceExt;
 use wgpu::Device;
 
-pub fn make_quad_mesh(device: &Device, atlas_name: String) -> Mesh {
+pub fn make_quad_mesh(device: &Device) -> Mesh {
     //region [ Vertex Data ]
 
     let quad_size_half = [0.5, 0.5];
@@ -53,7 +53,6 @@ pub fn make_quad_mesh(device: &Device, atlas_name: String) -> Mesh {
     let num_instances = 0; //instance_data.len() as u32;
 
     Mesh {
-        atlas_name,
         vertex_buffer,
         index_buffer,
         instance_buffer: None,
@@ -64,7 +63,7 @@ pub fn make_quad_mesh(device: &Device, atlas_name: String) -> Mesh {
 }
 
 #[allow(unused)]
-pub fn make_quad_mesh_with_size(device: &Device, atlas_name: String, size: [f32; 2]) -> Mesh {
+pub fn make_quad_mesh_with_size(device: &Device, size: [f32; 2]) -> Mesh {
     //region [ Vertex Data ]
     let quad_size = size;
     let quad_size_half = [quad_size[0] * 0.5, quad_size[1] * 0.5];
@@ -114,7 +113,6 @@ pub fn make_quad_mesh_with_size(device: &Device, atlas_name: String, size: [f32;
     let num_instances = 0; //instance_data.len() as u32;
 
     Mesh {
-        atlas_name,
         vertex_buffer,
         index_buffer,
         instance_buffer: None,
