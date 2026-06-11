@@ -56,6 +56,7 @@ pub fn make_quad_mesh(device: &Device) -> Mesh {
         vertex_buffer,
         index_buffer,
         instance_buffer: None,
+        instance_capacity: 0,
         num_indices,
         num_instances,
         // texture: texture.into()
@@ -116,6 +117,7 @@ pub fn make_quad_mesh_with_size(device: &Device, size: [f32; 2]) -> Mesh {
         vertex_buffer,
         index_buffer,
         instance_buffer: None,
+        instance_capacity: 0,
         num_indices,
         num_instances,
         // texture: texture.into()

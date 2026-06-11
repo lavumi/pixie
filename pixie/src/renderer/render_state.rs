@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::iter;
 use std::sync::Arc;
 
@@ -5,10 +6,26 @@ use winit::window::Window;
 
 use crate::renderer::font_manager::FontManager;
 use crate::renderer::gpu_resource_manager::GPUResourceManager;
+use crate::renderer::mesh::SpriteInstanceRaw;
 use crate::renderer::pipeline_manager::PipelineManager;
 use crate::renderer::render_input_data::*;
 use crate::renderer::texture;
 use crate::renderer::RenderError;
+use crate::AtlasId;
+
+#[derive(Default)]
+struct SpriteInstanceBuffers {
+    by_atlas: HashMap<AtlasId, Vec<SpriteInstanceRaw>>,
+}
+
+impl SpriteInstanceBuffers {
+    fn update(&mut self, atlas: &AtlasId, sprites: &[SpriteRenderData]) -> &[SpriteInstanceRaw] {
+        let instances = self.by_atlas.entry(atlas.clone()).or_default();
+        instances.clear();
+        instances.extend(sprites.iter().map(SpriteRenderData::get_instance_matrix));
+        instances
+    }
+}
 
 pub struct RenderState {
     pub device: wgpu::Device,
@@ -21,6 +38,7 @@ pub struct RenderState {
     pub pipeline_manager: PipelineManager,
 
     font_manager: FontManager,
+    sprite_instance_buffers: SpriteInstanceBuffers,
 
     color: wgpu::Color,
     depth_texture: texture::Texture,
@@ -119,6 +137,7 @@ impl RenderState {
             aspect_ratio,
             viewport_data,
             font_manager,
+            sprite_instance_buffers: SpriteInstanceBuffers::default(),
         }
     }
 
@@ -202,10 +221,7 @@ impl RenderState {
         frame: &RenderFrame<'_>,
     ) -> Result<(), crate::AtlasError> {
         for (atlas, sprite_data) in frame.sprite_batches() {
-            let instance_data = sprite_data
-                .iter()
-                .map(|data| data.get_instance_matrix())
-                .collect::<Vec<_>>();
+            let instance_data = self.sprite_instance_buffers.update(atlas, sprite_data);
 
             self.gpu_resource_manager.update_sprite_instances(
                 atlas,
@@ -293,5 +309,34 @@ impl RenderState {
     pub fn render_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
         self.update_frame(frame)?;
         self.render(frame)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sprite_data(count: usize) -> Vec<SpriteRenderData> {
+        (0..count)
+            .map(|index| SpriteRenderData {
+                uv: [0.0, 1.0, 0.0, 1.0],
+                position: [index as f32, 0.0, 0.0],
+                size: [1.0, 1.0],
+                rotation: 0.0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sprite_instance_cpu_capacity_is_reused() {
+        let atlas = AtlasId::from("main");
+        let mut buffers = SpriteInstanceBuffers::default();
+
+        buffers.update(&atlas, &sprite_data(5));
+        let capacity = buffers.by_atlas[&atlas].capacity();
+        buffers.update(&atlas, &sprite_data(2));
+
+        assert_eq!(buffers.by_atlas[&atlas].len(), 2);
+        assert_eq!(buffers.by_atlas[&atlas].capacity(), capacity);
     }
 }

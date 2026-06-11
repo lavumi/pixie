@@ -7,7 +7,9 @@ use wgpu::util::DeviceExt;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, RenderPass};
 
 use crate::renderer::builder::make_quad_mesh;
-use crate::renderer::mesh::{ColorSpriteInstanceRaw, Mesh, SpriteInstanceRaw};
+use crate::renderer::mesh::{
+    required_instance_capacity, ColorSpriteInstanceRaw, Mesh, SpriteInstanceRaw,
+};
 use crate::renderer::texture::Texture;
 use crate::{AtlasError, AtlasId};
 
@@ -257,7 +259,7 @@ impl GPUResourceManager {
         atlas: &AtlasId,
         device: &Device,
         queue: &Queue,
-        sprite_instances: Vec<SpriteInstanceRaw>,
+        sprite_instances: &[SpriteInstanceRaw],
     ) -> Result<(), AtlasError> {
         let mesh =
             self.meshes_by_atlas
@@ -269,26 +271,37 @@ impl GPUResourceManager {
             mesh.num_instances = 0;
             return Ok(());
         }
-        if mesh.num_instances == sprite_instances.len() as u32 {
+
+        let required_capacity =
+            required_instance_capacity(mesh.instance_capacity, sprite_instances.len());
+        if required_capacity == mesh.instance_capacity {
             queue.write_buffer(
                 mesh.instance_buffer.as_ref().unwrap(),
                 0,
-                bytemuck::cast_slice(&sprite_instances),
+                bytemuck::cast_slice(sprite_instances),
             );
         } else {
             log::debug!(
-                "update_sprite_instances {} before : {} , after : {}",
+                "growing sprite instance buffer {} from {} to {}",
                 atlas,
-                mesh.num_instances,
-                sprite_instances.len()
+                mesh.instance_capacity,
+                required_capacity
             );
-            let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(format!("Instance Buffer {atlas}").as_str()),
-                contents: bytemuck::cast_slice(&sprite_instances),
+                size: (required_capacity * std::mem::size_of::<SpriteInstanceRaw>())
+                    as wgpu::BufferAddress,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
-            mesh.replace_instance(instance_buffer, sprite_instances.len() as u32);
+            queue.write_buffer(&instance_buffer, 0, bytemuck::cast_slice(sprite_instances));
+            mesh.replace_instance(
+                instance_buffer,
+                required_capacity,
+                sprite_instances.len() as u32,
+            );
         }
+        mesh.num_instances = sprite_instances.len() as u32;
         Ok(())
     }
 
@@ -325,7 +338,11 @@ impl GPUResourceManager {
                 contents: bytemuck::cast_slice(&sprite_instances),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
-            mesh.replace_instance(instance_buffer, sprite_instances.len() as u32);
+            mesh.replace_instance(
+                instance_buffer,
+                sprite_instances.len(),
+                sprite_instances.len() as u32,
+            );
         }
     }
 

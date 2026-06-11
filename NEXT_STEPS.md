@@ -53,10 +53,15 @@ World + ResourceContainer
 
 - ~~`RenderFrame`과 extractor API의 소유권/수명 설계 재검토~~
 - ~~atlas 이름 `String` clone 최소화~~
-- sprite별 CPU buffer와 GPU instance buffer capacity 재사용 정책 정리
+- ~~sprite별 CPU buffer와 GPU instance buffer capacity 재사용 정책 정리~~
 - ~~없는 atlas를 참조했을 때 panic 대신 명확한 오류 제공~~
 - visibility, render layer, draw order를 어느 계층에서 처리할지 결정
 - renderer와 extractor를 독립적으로 테스트할 수 있는 경계 마련
+
+장기적으로는 atlas별 sprite를 항상 하나의 batch로 합치는 대신, draw item을
+render layer/draw order 기준으로 정렬한 뒤 순서를 깨지 않는 연속된 동일 batch
+key만 instancing해야 합니다. batch key는 atlas뿐 아니라 pipeline, material,
+render layer까지 확장할 수 있어야 합니다.
 
 ### 2. Renderer Error Handling
 
