@@ -344,7 +344,6 @@ impl<A: Application> Engine<A> {
             None => return Ok(()),
         };
         let frame = self.render_extractor.extract(&self.world, &self.resources);
-        rs.update_frame(&frame);
-        rs.render(&frame)
+        rs.render_frame(&frame)
     }
 }

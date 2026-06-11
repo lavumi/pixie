@@ -303,10 +303,13 @@ impl GPUResourceManager {
         }
     }
 
-    pub fn render<'a>(&'a self, render_pass: &mut RenderPass<'a>, atlas_names: &'a [String]) {
+    pub fn render<'a, 'b>(
+        &'a self,
+        render_pass: &mut RenderPass<'a>,
+        atlas_names: impl IntoIterator<Item = &'b str>,
+    ) {
         self.set_bind_group(render_pass, "camera");
 
-        log::debug!("Rendering {} visible sprite atlases", atlas_names.len());
         for atlas_name in atlas_names {
             self.render_meshes(render_pass, atlas_name);
         }

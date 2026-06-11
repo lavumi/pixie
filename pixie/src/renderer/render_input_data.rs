@@ -18,10 +18,46 @@ pub struct SpriteRenderData {
 }
 
 pub struct RenderFrame<'a> {
-    pub camera_uniform: [[f32; 4]; 4],
-    pub sprite_render_data: &'a HashMap<String, Vec<SpriteRenderData>>,
-    pub sprite_atlases: &'a [String],
-    pub texts: &'a [TextRenderData],
+    camera_uniform: [[f32; 4]; 4],
+    sprite_render_data: &'a HashMap<String, Vec<SpriteRenderData>>,
+    sprite_atlases: &'a [String],
+    texts: &'a [TextRenderData],
+}
+
+impl<'a> RenderFrame<'a> {
+    pub(crate) fn new(
+        camera_uniform: [[f32; 4]; 4],
+        sprite_render_data: &'a HashMap<String, Vec<SpriteRenderData>>,
+        sprite_atlases: &'a [String],
+        texts: &'a [TextRenderData],
+    ) -> Self {
+        Self {
+            camera_uniform,
+            sprite_render_data,
+            sprite_atlases,
+            texts,
+        }
+    }
+
+    pub fn camera_uniform(&self) -> [[f32; 4]; 4] {
+        self.camera_uniform
+    }
+
+    pub fn sprite_batches(&self) -> impl Iterator<Item = (&str, &[SpriteRenderData])> + '_ {
+        self.sprite_atlases.iter().filter_map(|atlas| {
+            self.sprite_render_data
+                .get(atlas)
+                .map(|sprites| (atlas.as_str(), sprites.as_slice()))
+        })
+    }
+
+    pub fn sprite_atlases(&self) -> impl Iterator<Item = &str> + '_ {
+        self.sprite_atlases.iter().map(String::as_str)
+    }
+
+    pub fn texts(&self) -> &[TextRenderData] {
+        self.texts
+    }
 }
 
 impl SpriteRenderData {

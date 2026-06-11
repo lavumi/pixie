@@ -47,12 +47,12 @@ impl RenderWorldExtractor {
         self.extract_sprites(world);
         self.extract_texts(world);
 
-        RenderFrame {
+        RenderFrame::new(
             camera_uniform,
-            sprite_render_data: &self.sprite_render_data,
-            sprite_atlases: &self.sprite_atlases,
-            texts: &self.text_render_buffer,
-        }
+            &self.sprite_render_data,
+            &self.sprite_atlases,
+            &self.text_render_buffer,
+        )
     }
 
     fn extract_sprites(&mut self, world: &World) {
@@ -122,5 +122,126 @@ impl RenderWorldExtractor {
             self.text_cache
                 .retain(|entity, _| valid_entities.contains(entity));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::Camera;
+
+    fn resources_with_camera() -> ResourceContainer {
+        let mut resources = ResourceContainer::new();
+        resources.insert(Camera::init_orthographic(10.0, 1.0));
+        resources
+    }
+
+    #[test]
+    fn extracts_sprite_and_text_render_data() {
+        let mut world = World::new();
+        world.spawn((
+            Transform::with_rotation([2.0, 3.0, 0.5], [4.0, 5.0], 0.25),
+            Sprite {
+                atlas: "main".to_string(),
+                uv: [0.0, 0.5, 0.5, 1.0],
+            },
+        ));
+        world.spawn((
+            Transform::new([6.0, 7.0, 0.0], [1.0, 1.0]),
+            Text {
+                content: "score".to_string(),
+                version: 0,
+            },
+            TextStyle {
+                size: [2.0, 3.0],
+                color: [0.1, 0.2, 0.3],
+                z_index: 0.75,
+            },
+        ));
+
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+        let frame = extractor.extract(&world, &resources);
+        let batches = frame.sprite_batches().collect::<Vec<_>>();
+
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].0, "main");
+        assert_eq!(batches[0].1.len(), 1);
+        assert_eq!(batches[0].1[0].position, [2.0, 3.0, 0.5]);
+        assert_eq!(batches[0].1[0].size, [4.0, 5.0]);
+        assert_eq!(batches[0].1[0].rotation, 0.25);
+        assert_eq!(batches[0].1[0].uv, [0.0, 0.5, 0.5, 1.0]);
+
+        assert_eq!(frame.texts().len(), 1);
+        assert_eq!(frame.texts()[0].content.as_str(), "score");
+        assert_eq!(frame.texts()[0].position, [6.0, 7.0, 0.75]);
+        assert_eq!(frame.texts()[0].size, [2.0, 3.0]);
+        assert_eq!(frame.texts()[0].color, [0.1, 0.2, 0.3]);
+    }
+
+    #[test]
+    fn clears_previous_frame_data_on_next_extraction() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Transform::default(),
+            Sprite {
+                atlas: "main".to_string(),
+                uv: [0.0, 1.0, 0.0, 1.0],
+            },
+        ));
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+
+        {
+            let frame = extractor.extract(&world, &resources);
+            assert_eq!(frame.sprite_batches().count(), 1);
+        }
+
+        world.despawn(entity).unwrap();
+        let frame = extractor.extract(&world, &resources);
+
+        assert_eq!(frame.sprite_batches().count(), 0);
+        assert_eq!(frame.sprite_atlases().count(), 0);
+    }
+
+    #[test]
+    fn groups_sprites_into_atlas_batches() {
+        let mut world = World::new();
+        for atlas in ["first", "second", "first"] {
+            world.spawn((
+                Transform::default(),
+                Sprite {
+                    atlas: atlas.to_string(),
+                    uv: [0.0, 1.0, 0.0, 1.0],
+                },
+            ));
+        }
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+        let frame = extractor.extract(&world, &resources);
+        let batch_sizes = frame
+            .sprite_batches()
+            .map(|(atlas, sprites)| (atlas, sprites.len()))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(batch_sizes.len(), 2);
+        assert_eq!(batch_sizes["first"], 2);
+        assert_eq!(batch_sizes["second"], 1);
+    }
+
+    #[test]
+    fn empty_world_produces_empty_draw_input() {
+        let world = World::new();
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+        let frame = extractor.extract(&world, &resources);
+
+        assert_eq!(frame.sprite_batches().count(), 0);
+        assert_eq!(frame.sprite_atlases().count(), 0);
+        assert!(frame.texts().is_empty());
+        assert_eq!(
+            frame.camera_uniform(),
+            resources.get::<Camera>().unwrap().get_view_proj()
+        );
     }
 }

@@ -185,17 +185,14 @@ impl RenderState {
             .write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
     }
 
-    pub fn update_frame(&mut self, frame: &RenderFrame<'_>) {
-        self.update_camera_buffer(frame.camera_uniform);
+    fn update_frame(&mut self, frame: &RenderFrame<'_>) {
+        self.update_camera_buffer(frame.camera_uniform());
         self.update_sprite_instances(frame);
-        self.update_text_instance(frame.texts);
+        self.update_text_instance(frame.texts());
     }
 
     fn update_sprite_instances(&mut self, frame: &RenderFrame<'_>) {
-        for atlas in frame.sprite_atlases {
-            let Some(sprite_data) = frame.sprite_render_data.get(atlas) else {
-                continue;
-            };
+        for (atlas, sprite_data) in frame.sprite_batches() {
             let instance_data = sprite_data
                 .iter()
                 .map(|data| data.get_instance_matrix())
@@ -224,7 +221,7 @@ impl RenderState {
         );
     }
 
-    pub fn render(&self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
+    fn render(&self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -272,7 +269,7 @@ impl RenderState {
             let render_pipeline = self.pipeline_manager.get_pipeline("sprite_pl");
             render_pass.set_pipeline(render_pipeline);
             self.gpu_resource_manager
-                .render(&mut render_pass, frame.sprite_atlases);
+                .render(&mut render_pass, frame.sprite_atlases());
 
             let render_pipeline = self.pipeline_manager.get_pipeline("font_pl");
             render_pass.set_pipeline(render_pipeline);
@@ -282,5 +279,10 @@ impl RenderState {
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
         Ok(())
+    }
+
+    pub fn render_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), wgpu::SurfaceError> {
+        self.update_frame(frame);
+        self.render(frame)
     }
 }
