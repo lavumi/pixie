@@ -211,6 +211,10 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                     log::error!("{error}");
                                     event_loop.exit();
                                 }
+                                Err(error @ RenderError::MissingGpuResource { .. }) => {
+                                    log::error!("{error}");
+                                    event_loop.exit();
+                                }
                             }
                         }
                         _ => {}

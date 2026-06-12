@@ -250,8 +250,8 @@ impl GPUResourceManager {
         self.buffers.insert(name, Arc::new(buffer));
     }
 
-    pub fn get_buffer<T: Into<String>>(&self, name: T) -> Arc<Buffer> {
-        self.buffers.get(&name.into()).unwrap().clone()
+    pub fn get_buffer<T: Into<String>>(&self, name: T) -> Option<Arc<Buffer>> {
+        self.buffers.get(&name.into()).cloned()
     }
 
     pub fn update_sprite_instances(
@@ -381,5 +381,17 @@ impl GPUResourceManager {
         render_pass.set_vertex_buffer(1, mesh.instance_buffer.as_ref().unwrap().slice(..));
         render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.num_instances);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_buffer_lookup_returns_none() {
+        let resources = GPUResourceManager::default();
+
+        assert!(resources.get_buffer("missing").is_none());
     }
 }

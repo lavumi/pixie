@@ -204,14 +204,21 @@ impl RenderState {
             }
         }
     }
-    fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) {
-        let camera_buffer = self.gpu_resource_manager.get_buffer("camera_matrix");
+    fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) -> Result<(), RenderError> {
+        let camera_buffer = self
+            .gpu_resource_manager
+            .get_buffer("camera_matrix")
+            .ok_or_else(|| RenderError::MissingGpuResource {
+                resource_type: "buffer",
+                name: "camera_matrix".to_string(),
+            })?;
         self.queue
             .write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
+        Ok(())
     }
 
-    fn update_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), crate::AtlasError> {
-        self.update_camera_buffer(frame.camera_uniform());
+    fn update_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
+        self.update_camera_buffer(frame.camera_uniform())?;
         self.update_sprite_instances(frame)?;
         self.update_text_instance(frame.texts());
         Ok(())
