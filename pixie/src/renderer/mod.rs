@@ -1,4 +1,4 @@
-pub use error::RenderError;
+pub use error::{FontError, RenderError};
 pub use render_input_data::*;
 pub use render_state::RenderState;
 pub use render_world_extractor::RenderWorldExtractor;

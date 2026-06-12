@@ -48,7 +48,7 @@ pub struct RenderState {
     viewport_data: [f32; 6],
 }
 impl RenderState {
-    pub async fn new(window: Arc<Window>, width: u32, height: u32) -> Self {
+    pub async fn new(window: Arc<Window>, width: u32, height: u32) -> Result<Self, RenderError> {
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
@@ -124,9 +124,9 @@ impl RenderState {
         let mut pipeline_manager = PipelineManager::default();
         pipeline_manager.init_pipelines(&device, config.format, &gpu_resource_manager);
 
-        let font_manager = FontManager::default();
+        let font_manager = FontManager::new()?;
 
-        Self {
+        Ok(Self {
             device,
             surface,
             queue,
@@ -139,21 +139,21 @@ impl RenderState {
             viewport_data,
             font_manager,
             sprite_instance_buffers: SpriteInstanceBuffers::default(),
-        }
+        })
     }
 
-    pub async fn init_resources(&mut self) {
+    pub async fn init_resources(&mut self) -> Result<(), RenderError> {
         // Initialize UI resources (font system)
         // Generate font atlas from TTF at runtime
         let font_texture = self
             .font_manager
             .make_font_atlas_rgba(&self.device, &self.queue, RASTER_SIZE)
-            .await
-            .unwrap();
+            .await?;
         self.gpu_resource_manager
             .init_ui_atlas_from_texture(font_texture, &self.device)
             .await;
         self.gpu_resource_manager.init_ui_meshes(&self.device);
+        Ok(())
     }
 
     /// Load a texture atlas and auto-create a quad mesh for rendering

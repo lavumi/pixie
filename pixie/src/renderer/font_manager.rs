@@ -1,5 +1,5 @@
 use crate::renderer::mesh::ColorSpriteInstanceRaw;
-use crate::renderer::TextRenderData;
+use crate::renderer::{FontError, TextRenderData};
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle as FontdueTextStyle};
 use fontdue::{Font, Metrics};
 use std::cmp::max;
@@ -34,21 +34,23 @@ pub struct FontManager {
     font_map: HashMap<char, FontRenderData>,
 }
 
-impl Default for FontManager {
-    fn default() -> Self {
+impl FontManager {
+    pub fn new() -> Result<Self, FontError> {
         let bytes = include_bytes!("../../assets/font/ZEN-SERIF.otf") as &[u8];
-        let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
-            .expect("embedded font must be valid");
+        Self::from_bytes(bytes)
+    }
 
-        Self {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, FontError> {
+        let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
+            .map_err(FontError::InvalidFont)?;
+
+        Ok(Self {
             font,
             font_map: HashMap::new(),
-        }
+        })
     }
-}
 
-impl FontManager {
-    pub fn font_rasterize(&mut self, font_size: f32) -> RasterizedFont {
+    pub fn font_rasterize(&mut self, font_size: f32) -> Result<RasterizedFont, FontError> {
         let mut max_size = [0, 0];
         let mut rasterized = Vec::with_capacity(RENDER_CHARACTER_ARRAY.len());
 
@@ -64,15 +66,21 @@ impl FontManager {
             max_size[1] + ATLAS_PADDING * 2,
         ];
         let characters_per_row = ATLAS_SIZE / cell_size[0];
-        assert!(
-            characters_per_row > 0,
-            "font glyphs do not fit in the atlas"
-        );
+        if characters_per_row == 0 {
+            return Err(FontError::AtlasTooSmall {
+                atlas_size: ATLAS_SIZE,
+                glyph_width: cell_size[0],
+                glyph_height: cell_size[1],
+            });
+        }
         let required_rows = RENDER_CHARACTER_ARRAY.len().div_ceil(characters_per_row);
-        assert!(
-            required_rows * cell_size[1] <= ATLAS_SIZE,
-            "font glyphs do not fit in the atlas"
-        );
+        if required_rows * cell_size[1] > ATLAS_SIZE {
+            return Err(FontError::AtlasTooSmall {
+                atlas_size: ATLAS_SIZE,
+                glyph_width: cell_size[0],
+                glyph_height: cell_size[1],
+            });
+        }
 
         self.font_map.clear();
         let mut glyphs = Vec::with_capacity(rasterized.len());
@@ -97,7 +105,7 @@ impl FontManager {
             });
         }
 
-        RasterizedFont { glyphs }
+        Ok(RasterizedFont { glyphs })
     }
 
     pub fn make_font_buffer(
@@ -106,7 +114,7 @@ impl FontManager {
         output_buffer: wgpu::Buffer,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<wgpu::Buffer, wgpu::SurfaceError> {
+    ) -> wgpu::Buffer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("font buffer command encoder"),
         });
@@ -176,7 +184,7 @@ impl FontManager {
         }
 
         queue.submit(Some(encoder.finish()));
-        Ok(output_buffer)
+        output_buffer
     }
 
     pub async fn make_font_atlas_rgba(
@@ -184,7 +192,7 @@ impl FontManager {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         font_size: f32,
-    ) -> Result<wgpu::Texture, wgpu::SurfaceError> {
+    ) -> Result<wgpu::Texture, FontError> {
         assert!(
             (font_size - RASTER_SIZE).abs() < f32::EPSILON,
             "text layout and atlas raster size must match"
@@ -193,16 +201,14 @@ impl FontManager {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("font atlasing command encoder"),
         });
-        let rasterized_font = self.font_rasterize(font_size);
+        let rasterized_font = self.font_rasterize(font_size)?;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: (ATLAS_SIZE * ATLAS_SIZE * 4) as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             label: Some("font atlas buffer"),
             mapped_at_creation: false,
         });
-        let output_buffer = self
-            .make_font_buffer(rasterized_font, output_buffer, device, queue)
-            .unwrap();
+        let output_buffer = self.make_font_buffer(rasterized_font, output_buffer, device, queue);
 
         let size = wgpu::Extent3d {
             width: ATLAS_SIZE as u32,
@@ -319,8 +325,8 @@ mod tests {
     use std::sync::Arc;
 
     fn manager() -> FontManager {
-        let mut manager = FontManager::default();
-        manager.font_rasterize(RASTER_SIZE);
+        let mut manager = FontManager::new().unwrap();
+        manager.font_rasterize(RASTER_SIZE).unwrap();
         manager
     }
 
@@ -339,6 +345,27 @@ mod tests {
 
     fn scale(instance: &ColorSpriteInstanceRaw) -> [f32; 2] {
         [instance.model[0][0], instance.model[1][1]]
+    }
+
+    #[test]
+    fn invalid_font_bytes_return_error() {
+        let error = match FontManager::from_bytes(b"not a font") {
+            Ok(_) => panic!("invalid font bytes should fail"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, FontError::InvalidFont(_)));
+    }
+
+    #[test]
+    fn oversized_glyphs_return_atlas_error() {
+        let mut manager = FontManager::new().unwrap();
+        let error = match manager.font_rasterize(200.0) {
+            Ok(_) => panic!("oversized glyphs should not fit the atlas"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, FontError::AtlasTooSmall { .. }));
     }
 
     #[test]

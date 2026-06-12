@@ -69,8 +69,17 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                 let w = self.initial_width;
                 let h = self.initial_height;
                 wasm_bindgen_futures::spawn_local(async move {
-                    let mut rs = RenderState::new(window_clone, w, h).await;
-                    rs.init_resources().await;
+                    let mut rs = match RenderState::new(window_clone, w, h).await {
+                        Ok(rs) => rs,
+                        Err(error) => {
+                            log::error!("{error}");
+                            return;
+                        }
+                    };
+                    if let Err(error) = rs.init_resources().await {
+                        log::error!("{error}");
+                        return;
+                    }
                     *pending_clone.borrow_mut() = Some(rs);
                 });
 
@@ -80,12 +89,23 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
 
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let mut rs = block_on(RenderState::new(
+                let mut rs = match block_on(RenderState::new(
                     window.clone(),
                     self.initial_width,
                     self.initial_height,
-                ));
-                block_on(rs.init_resources());
+                )) {
+                    Ok(rs) => rs,
+                    Err(error) => {
+                        log::error!("{error}");
+                        event_loop.exit();
+                        return;
+                    }
+                };
+                if let Err(error) = block_on(rs.init_resources()) {
+                    log::error!("{error}");
+                    event_loop.exit();
+                    return;
+                }
                 if let Err(error) = Self::upload_pending_atlases(&mut self.resources, &mut rs) {
                     log::error!("{error}");
                     event_loop.exit();
@@ -208,6 +228,10 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                     log::warn!("Surface error: other")
                                 }
                                 Err(RenderError::Atlas(error)) => {
+                                    log::error!("{error}");
+                                    event_loop.exit();
+                                }
+                                Err(RenderError::Font(error)) => {
                                     log::error!("{error}");
                                     event_loop.exit();
                                 }
