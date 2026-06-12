@@ -10,7 +10,7 @@ use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
 use crate::resources::{DeltaTime, ResourceContainer};
-use crate::{AtlasError, TextureAtlasAsset, TextureAtlasRegistry};
+use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
 
@@ -227,15 +227,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                 Err(RenderError::Surface(wgpu::SurfaceError::Other)) => {
                                     log::warn!("Surface error: other")
                                 }
-                                Err(RenderError::Atlas(error)) => {
-                                    log::error!("{error}");
-                                    event_loop.exit();
-                                }
-                                Err(RenderError::Font(error)) => {
-                                    log::error!("{error}");
-                                    event_loop.exit();
-                                }
-                                Err(error @ RenderError::MissingGpuResource { .. }) => {
+                                Err(error) => {
                                     log::error!("{error}");
                                     event_loop.exit();
                                 }
@@ -380,12 +372,12 @@ impl<A: Application> Engine<A> {
     fn upload_pending_atlases(
         resources: &mut ResourceContainer,
         render_state: &mut RenderState,
-    ) -> Result<(), AtlasError> {
+    ) -> Result<(), RenderError> {
         let registry = resources
             .get_mut::<TextureAtlasRegistry>()
             .expect("TextureAtlasRegistry resource not found");
         if let Some(error) = registry.take_error() {
-            return Err(error);
+            return Err(error.into());
         }
         let pending = registry.take_pending();
 

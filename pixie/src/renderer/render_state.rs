@@ -56,15 +56,14 @@ impl RenderState {
         // # Safety
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
-            .unwrap();
+            .await?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
@@ -80,8 +79,7 @@ impl RenderState {
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
             })
-            .await
-            .unwrap();
+            .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -94,15 +92,29 @@ impl RenderState {
                     wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
                 )
             })
-            .unwrap_or(surface_caps.formats[0]);
+            .or_else(|| surface_caps.formats.first().copied())
+            .ok_or(RenderError::SurfaceConfiguration(
+                "adapter reported no supported surface formats",
+            ))?;
+        let present_mode = surface_caps.present_modes.first().copied().ok_or(
+            RenderError::SurfaceConfiguration("adapter reported no supported present modes"),
+        )?;
+        let alpha_mode =
+            surface_caps
+                .alpha_modes
+                .first()
+                .copied()
+                .ok_or(RenderError::SurfaceConfiguration(
+                    "adapter reported no supported alpha modes",
+                ))?;
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width,
             height,
-            present_mode: surface_caps.present_modes[0],
+            present_mode,
             desired_maximum_frame_latency: 2,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode,
             view_formats: vec![],
         };
         surface.configure(&device, &config);
@@ -161,9 +173,14 @@ impl RenderState {
         &mut self,
         name: &crate::AtlasId,
         image_bytes: &[u8],
-    ) -> Result<(), crate::AtlasError> {
-        self.gpu_resource_manager
-            .load_texture_atlas(name, image_bytes, &self.device, &self.queue)
+    ) -> Result<(), RenderError> {
+        self.gpu_resource_manager.load_texture_atlas(
+            name,
+            image_bytes,
+            &self.device,
+            &self.queue,
+        )?;
+        Ok(())
     }
 
     #[allow(dead_code)]
