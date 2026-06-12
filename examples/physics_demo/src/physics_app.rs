@@ -1,8 +1,8 @@
-use hecs::World;
+use hecs::{Entity, World};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Gravity, ResourceContainer, Sprite, Transform};
+use pixie::{Application, Gravity, ResourceContainer, Sprite, Text, TextStyle, Transform};
 use pixie::{BodyType, BoxCollider, CircleCollider, Force, RigidBody, Velocity};
 
 // systems are now built and owned by the engine; keep module private here
@@ -24,6 +24,7 @@ pub struct PhysicsApp {
     ball_sizes: [f32; 3], // Three different ball sizes
     ball_mass: f32,
     ball_restitution: f32,
+    hud_text_entity: Option<Entity>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +52,7 @@ impl Default for PhysicsApp {
             ball_sizes: [0.3, 0.5, 0.7], // Three different ball sizes
             ball_mass: 1.0,              // Increase mass to resist gravity better
             ball_restitution: 0.6,       // Increase bounce
+            hud_text_entity: None,
         }
     }
 }
@@ -79,8 +81,13 @@ impl Application for PhysicsApp {
             config::BOX_SIZE[1],
         ); // Right
 
+        self.create_hud(world);
         self.start_ball_shooting();
-        log::info!("Physics demo initialized - 10 balls + 4 walls created");
+        self.update_hud(world);
+        log::info!(
+            "Physics demo initialized - {} launch groups + 3 walls created",
+            self.ball_count
+        );
     }
 
     fn update(&mut self, world: &mut World, _resources: &mut ResourceContainer, dt: f32) {
@@ -88,6 +95,7 @@ impl Application for PhysicsApp {
         if matches!(self.ball_state, BallState::Shooting) {
             self.process_ball_shooting(world, dt);
         }
+        self.update_hud(world);
     }
 
     // No dispatcher building in app anymore
@@ -128,6 +136,54 @@ impl Application for PhysicsApp {
 }
 
 impl PhysicsApp {
+    fn create_hud(&mut self, world: &mut World) {
+        self.hud_text_entity = Some(world.spawn((
+            Transform::new([-10.5, 18.5, 0.0], [1.0, 1.0]),
+            Text::default(),
+            TextStyle {
+                size: [0.65, 0.65],
+                color: [1.0, 1.0, 1.0],
+                z_index: 2.0,
+            },
+        )));
+
+        world.spawn((
+            Transform::new([-2.0, 4.0, 0.0], [1.0, 1.0]),
+            Text {
+                content: "DROP ZONE".to_string(),
+            },
+            TextStyle {
+                size: [0.8, 0.8],
+                color: [1.0, 1.0, 1.0],
+                z_index: 2.0,
+            },
+        ));
+    }
+
+    fn update_hud(&self, world: &mut World) {
+        let ball_count = world
+            .query::<&RigidBody>()
+            .iter()
+            .filter(|(_, body)| body.body_type == BodyType::Dynamic)
+            .count();
+        let status = match self.ball_state {
+            BallState::Ready => "Ready",
+            BallState::Shooting => "Shooting",
+            BallState::Complete => "Complete",
+        };
+
+        if let Some(entity) = self.hud_text_entity {
+            if let Ok(mut text) = world.get::<&mut Text>(entity) {
+                text.content = format!(
+                    "PHYSICS SANDBOX\n\nBalls: {}\nTarget: {}\nStatus: {}\n\nR Reset",
+                    ball_count,
+                    self.ball_count * 3,
+                    status
+                );
+            }
+        }
+    }
+
     fn create_boundary(&self, world: &mut World, x: f32, y: f32, width: f32, height: f32) {
         world.spawn((
             Transform {
@@ -298,5 +354,52 @@ impl PhysicsApp {
             Force::default(),
             CircleCollider { radius },
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hud_content(world: &World) -> String {
+        world
+            .query::<&Text>()
+            .iter()
+            .find_map(|(_, text)| {
+                text.content
+                    .starts_with("PHYSICS SANDBOX")
+                    .then(|| text.content.clone())
+            })
+            .expect("HUD text must exist")
+    }
+
+    #[test]
+    fn initializes_physics_hud() {
+        let mut app = PhysicsApp::default();
+        let mut world = World::new();
+        let mut resources = ResourceContainer::new();
+
+        app.init(&mut world, &mut resources);
+
+        let content = hud_content(&world);
+        assert!(content.contains("Balls: 0"));
+        assert!(content.contains("Target: 300"));
+        assert!(content.contains("Status: Shooting"));
+        assert!(world
+            .query::<&Text>()
+            .iter()
+            .any(|(_, text)| text.content == "DROP ZONE"));
+    }
+
+    #[test]
+    fn updates_hud_after_launching_balls() {
+        let mut app = PhysicsApp::default();
+        let mut world = World::new();
+        let mut resources = ResourceContainer::new();
+        app.init(&mut world, &mut resources);
+
+        app.update(&mut world, &mut resources, app.shoot_interval);
+
+        assert!(hud_content(&world).contains("Balls: 3"));
     }
 }
