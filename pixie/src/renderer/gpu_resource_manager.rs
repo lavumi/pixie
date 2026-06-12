@@ -360,7 +360,7 @@ impl GPUResourceManager {
     }
 
     pub async fn init_ui_atlas_from_texture(&mut self, texture: wgpu::Texture, device: &Device) {
-        let diffuse_texture = Texture::from_wgpu_texture(texture, device);
+        let diffuse_texture = Texture::from_wgpu_texture(texture, device, wgpu::FilterMode::Linear);
         self.make_bind_group("font", diffuse_texture, device);
     }
 

@@ -1,26 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use hecs::{Entity, World};
+use hecs::World;
 
 use crate::components::{Sprite, Text, TextStyle, Transform};
 use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
 use crate::{AtlasError, AtlasId, TextureAtlasRegistry};
 
-struct CachedText {
-    version: u64,
-    render_data: TextRenderData,
-}
-
 #[derive(Default)]
 pub struct RenderWorldExtractor {
     sprite_render_data: HashMap<AtlasId, Vec<SpriteRenderData>>,
     sprite_atlases: Vec<AtlasId>,
     active_sprite_atlases: HashSet<AtlasId>,
-    text_cache: HashMap<Entity, CachedText>,
     text_render_buffer: Vec<TextRenderData>,
-    cache_cleanup_counter: u32,
 }
 
 impl RenderWorldExtractor {
@@ -29,9 +22,7 @@ impl RenderWorldExtractor {
             sprite_render_data: HashMap::with_capacity(sprite_atlas_count),
             sprite_atlases: Vec::with_capacity(sprite_atlas_count),
             active_sprite_atlases: HashSet::with_capacity(sprite_atlas_count),
-            text_cache: HashMap::with_capacity(text_count),
             text_render_buffer: Vec::with_capacity(text_count),
-            cache_cleanup_counter: 0,
         }
     }
 
@@ -103,45 +94,14 @@ impl RenderWorldExtractor {
     fn extract_texts(&mut self, world: &World) {
         self.text_render_buffer.clear();
 
-        for (entity, (transform, text, style)) in
-            world.query::<(&Transform, &Text, &TextStyle)>().iter()
+        for (_, (transform, text, style)) in world.query::<(&Transform, &Text, &TextStyle)>().iter()
         {
-            let needs_update = match self.text_cache.get(&entity) {
-                Some(cached) => cached.version != text.version,
-                None => true,
-            };
-
-            if needs_update {
-                let render_data = TextRenderData {
-                    content: Arc::new(text.content.clone()),
-                    position: [transform.position[0], transform.position[1], style.z_index],
-                    size: style.size,
-                    color: style.color,
-                };
-                self.text_cache.insert(
-                    entity,
-                    CachedText {
-                        version: text.version,
-                        render_data,
-                    },
-                );
-            }
-
-            if let Some(cached) = self.text_cache.get(&entity) {
-                self.text_render_buffer.push(cached.render_data.clone());
-            }
-        }
-
-        self.cache_cleanup_counter += 1;
-        if self.cache_cleanup_counter >= 60 {
-            self.cache_cleanup_counter = 0;
-            let valid_entities: HashSet<Entity> = world
-                .query::<&Text>()
-                .iter()
-                .map(|(entity, _)| entity)
-                .collect();
-            self.text_cache
-                .retain(|entity, _| valid_entities.contains(entity));
+            self.text_render_buffer.push(TextRenderData {
+                content: Arc::new(text.content.clone()),
+                position: [transform.position[0], transform.position[1], style.z_index],
+                size: style.size,
+                color: style.color,
+            });
         }
     }
 }
@@ -176,7 +136,6 @@ mod tests {
             Transform::new([6.0, 7.0, 0.0], [1.0, 1.0]),
             Text {
                 content: "score".to_string(),
-                version: 0,
             },
             TextStyle {
                 size: [2.0, 3.0],
@@ -241,6 +200,43 @@ mod tests {
                 .capacity(),
             capacity_before
         );
+    }
+
+    #[test]
+    fn reflects_text_transform_and_style_changes_on_next_extraction() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Transform::new([1.0, 2.0, 0.0], [1.0, 1.0]),
+            Text {
+                content: "before".to_string(),
+            },
+            TextStyle {
+                size: [1.0, 1.0],
+                color: [1.0, 1.0, 1.0],
+                z_index: 0.5,
+            },
+        ));
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+
+        extractor.extract(&world, &resources).unwrap();
+
+        world.get::<&mut Text>(entity).unwrap().content = "after".to_string();
+        world.get::<&mut Transform>(entity).unwrap().position = [3.0, 4.0, 0.0];
+        {
+            let mut style = world.get::<&mut TextStyle>(entity).unwrap();
+            style.size = [2.0, 3.0];
+            style.color = [0.1, 0.2, 0.3];
+            style.z_index = 0.75;
+        }
+
+        let frame = extractor.extract(&world, &resources).unwrap();
+        let text = &frame.texts()[0];
+
+        assert_eq!(text.content.as_str(), "after");
+        assert_eq!(text.position, [3.0, 4.0, 0.75]);
+        assert_eq!(text.size, [2.0, 3.0]);
+        assert_eq!(text.color, [0.1, 0.2, 0.3]);
     }
 
     #[test]

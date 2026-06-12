@@ -56,13 +56,12 @@ impl Application for FlappyApplication {
         // Create text entities
         self.stats_text_entity = Some(world.spawn((
             Transform {
-                position: [-4.5, 8.5, 0.0],
+                position: [-4.75, 8.75, 0.0],
                 size: [1.0, 1.0],
                 rotation: 0.0,
             },
             Text {
                 content: "Generation: 0\nScore: 0.000\nSurvive: 0".to_string(),
-                version: 1,
             },
             TextStyle {
                 size: [0.5, 0.5],
@@ -73,13 +72,12 @@ impl Application for FlappyApplication {
 
         self.instruction_text_entity = Some(world.spawn((
             Transform {
-                position: [-3.0, 1.0, 0.0],
+                position: [-3.25, 1.25, 0.0],
                 size: [1.0, 1.0],
                 rotation: 0.0,
             },
             Text {
                 content: "Press any key to start".to_string(),
-                version: 1,
             },
             TextStyle {
                 size: [0.5, 0.5],
@@ -261,8 +259,7 @@ impl FlappyApplication {
                     gene_handler.generation, score.0, players
                 );
 
-                // Use set_content helper which auto-increments version
-                text.set_content(new_content);
+                text.content = new_content;
             }
         }
 
@@ -275,13 +272,12 @@ impl FlappyApplication {
                     // Re-spawn if it was removed
                     self.instruction_text_entity = Some(world.spawn((
                         Transform {
-                            position: [-3.0, 1.0, 0.0],
+                            position: [-3.25, 1.25, 0.0],
                             size: [1.0, 1.0],
                             rotation: 0.0,
                         },
                         Text {
                             content: "Press any key to start".to_string(),
-                            version: 1,
                         },
                         TextStyle {
                             size: [0.5, 0.5],

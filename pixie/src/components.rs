@@ -62,20 +62,11 @@ impl Default for Transform {
 #[derive(Clone, Default)]
 pub struct Text {
     pub content: String,
-    pub version: u64, // Increment when content changes
-}
-
-impl Text {
-    pub fn set_content(&mut self, content: String) {
-        if self.content != content {
-            self.content = content;
-            self.version = self.version.wrapping_add(1);
-        }
-    }
 }
 
 #[derive(Clone)]
 pub struct TextStyle {
+    /// World-space size of the font em square rasterized at 48 pixels.
     pub size: [f32; 2],
     pub color: [f32; 3],
     pub z_index: f32,

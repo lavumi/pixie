@@ -1,9 +1,13 @@
 use crate::renderer::mesh::ColorSpriteInstanceRaw;
 use crate::renderer::TextRenderData;
-use fontdue::Metrics;
-use std::cmp::{max, min};
+use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle as FontdueTextStyle};
+use fontdue::{Font, Metrics};
+use std::cmp::max;
 use std::collections::HashMap;
 
+const ATLAS_SIZE: usize = 512;
+const ATLAS_PADDING: usize = 1;
+pub(crate) const RASTER_SIZE: f32 = 48.0;
 const RENDER_CHARACTER_ARRAY: [char; 64] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
     't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
@@ -14,70 +18,86 @@ const RENDER_CHARACTER_ARRAY: [char; 64] = [
 struct Glyph {
     bitmap: Vec<u8>,
     metrics: Metrics,
+    atlas_origin: [usize; 2],
 }
 
 pub struct RasterizedFont {
     glyphs: Vec<Glyph>,
-    size: [usize; 2],
-    max_y_min: i32,
 }
 
 struct FontRenderData {
     uv: [f32; 4],
-    advance: f32,
 }
 
-#[derive(Default)]
 pub struct FontManager {
+    font: Font,
     font_map: HashMap<char, FontRenderData>,
+}
+
+impl Default for FontManager {
+    fn default() -> Self {
+        let bytes = include_bytes!("../../assets/font/ZEN-SERIF.otf") as &[u8];
+        let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
+            .expect("embedded font must be valid");
+
+        Self {
+            font,
+            font_map: HashMap::new(),
+        }
+    }
 }
 
 impl FontManager {
     pub fn font_rasterize(&mut self, font_size: f32) -> RasterizedFont {
-        let font = include_bytes!("../../assets/font/ZEN-SERIF.otf") as &[u8];
-        // let font = include_bytes!("../../assets/font/Gameplay.ttf") as &[u8];
-        let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
+        let mut max_size = [0, 0];
+        let mut rasterized = Vec::with_capacity(RENDER_CHARACTER_ARRAY.len());
 
-        let mut size = [0, 0];
-        let mut max_y_min = 0;
-        let mut glyphs = vec![];
-
-        for character in RENDER_CHARACTER_ARRAY.iter() {
-            let (metrics, bitmap) = font.rasterize(*character, font_size);
-            glyphs.push(Glyph { bitmap, metrics });
-            size[0] = max(size[0], metrics.width);
-            size[1] = max(size[1], metrics.height);
-            max_y_min = min(max_y_min, metrics.ymin);
+        for character in RENDER_CHARACTER_ARRAY {
+            let (metrics, bitmap) = self.font.rasterize(character, font_size);
+            max_size[0] = max(max_size[0], metrics.width);
+            max_size[1] = max(max_size[1], metrics.height);
+            rasterized.push((character, metrics, bitmap));
         }
 
-        let atlas_size = 512;
-        let char_in_row = atlas_size / size[0];
+        let cell_size = [
+            max_size[0] + ATLAS_PADDING * 2,
+            max_size[1] + ATLAS_PADDING * 2,
+        ];
+        let characters_per_row = ATLAS_SIZE / cell_size[0];
+        assert!(
+            characters_per_row > 0,
+            "font glyphs do not fit in the atlas"
+        );
+        let required_rows = RENDER_CHARACTER_ARRAY.len().div_ceil(characters_per_row);
+        assert!(
+            required_rows * cell_size[1] <= ATLAS_SIZE,
+            "font glyphs do not fit in the atlas"
+        );
 
-        for (index, character) in RENDER_CHARACTER_ARRAY.iter().enumerate() {
+        self.font_map.clear();
+        let mut glyphs = Vec::with_capacity(rasterized.len());
+
+        for (index, (character, metrics, bitmap)) in rasterized.into_iter().enumerate() {
+            let atlas_origin = [
+                (index % characters_per_row) * cell_size[0] + ATLAS_PADDING,
+                (index / characters_per_row) * cell_size[1] + ATLAS_PADDING,
+            ];
             let uv = [
-                (index % char_in_row) as f32 * size[0] as f32 / atlas_size as f32,
-                ((index % char_in_row) + 1) as f32 * size[0] as f32 / atlas_size as f32,
-                (index / char_in_row) as f32 * size[1] as f32 / atlas_size as f32,
-                ((index / char_in_row) + 1) as f32 * size[1] as f32 / atlas_size as f32,
+                (atlas_origin[0] as f32 + 0.5) / ATLAS_SIZE as f32,
+                (atlas_origin[0] as f32 + metrics.width as f32 - 0.5) / ATLAS_SIZE as f32,
+                (atlas_origin[1] as f32 + 0.5) / ATLAS_SIZE as f32,
+                (atlas_origin[1] as f32 + metrics.height as f32 - 0.5) / ATLAS_SIZE as f32,
             ];
 
-            // let _metrics = glyphs[index].metrics;
-
-            let metrics = glyphs[index].metrics;
-            self.font_map.insert(
-                *character,
-                FontRenderData {
-                    uv,
-                    advance: metrics.advance_width,
-                },
-            );
+            self.font_map.insert(character, FontRenderData { uv });
+            glyphs.push(Glyph {
+                bitmap,
+                metrics,
+                atlas_origin,
+            });
         }
 
-        RasterizedFont {
-            glyphs,
-            size,
-            max_y_min,
-        }
+        RasterizedFont { glyphs }
     }
 
     pub fn make_font_buffer(
@@ -87,27 +107,23 @@ impl FontManager {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<wgpu::Buffer, wgpu::SurfaceError> {
-        let max_size = rasterized_font.size;
-
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("font buffer command encoder"),
         });
 
-        let atlas_size = 512;
-        let char_in_row = atlas_size / max_size[0];
-        for (index, font_datum) in rasterized_font.glyphs.iter().enumerate() {
-            let metrics = font_datum.metrics;
-            let bitmap = &font_datum.bitmap;
+        for glyph in &rasterized_font.glyphs {
+            if glyph.metrics.width == 0 || glyph.metrics.height == 0 {
+                continue;
+            }
 
-            // Convert grayscale to RGBA
-            let rgba_data: Vec<u8> = bitmap
+            let rgba_data: Vec<u8> = glyph
+                .bitmap
                 .iter()
-                .flat_map(|&gray| [255, 255, 255, gray].into_iter())
+                .flat_map(|&gray| [255, 255, 255, gray])
                 .collect();
-
             let size = wgpu::Extent3d {
-                width: metrics.width as u32,
-                height: metrics.height as u32,
+                width: glyph.metrics.width as u32,
+                height: glyph.metrics.height as u32,
                 depth_or_array_layers: 1,
             };
             let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -139,35 +155,7 @@ impl FontManager {
                 size,
             );
 
-            // 안전한 오프셋 계산 - 오버플로우 방지
-            let char_x = index % char_in_row;
-            let char_y = index / char_in_row;
-
-            // 각 컴포넌트를 개별적으로 계산하여 오버플로우 방지
-            let x_offset = char_x * max_size[0];
-            let y_offset = char_y * atlas_size * max_size[1];
-            let metrics_x = metrics.xmin.max(0) as usize; // 음수 방지
-
-            // Y 위치 계산 - 안전한 방식
-            let glyph_height = metrics.height as i32;
-            let glyph_ymin = metrics.ymin;
-            let y_adjustment = glyph_height + glyph_ymin - rasterized_font.max_y_min;
-            let y_position = if y_adjustment >= 0 {
-                max_size[1].saturating_sub(y_adjustment as usize)
-            } else {
-                max_size[1] // 음수인 경우 기본값 사용
-            };
-
-            let final_y_offset = atlas_size * y_position;
-
-            // 최종 오프셋 계산 - 각 단계에서 오버플로우 체크
-            let total_offset = x_offset
-                .saturating_add(y_offset)
-                .saturating_add(metrics_x)
-                .saturating_add(final_y_offset);
-
-            let offset = (total_offset * 4) as wgpu::BufferAddress;
-
+            let offset = ((glyph.atlas_origin[1] * ATLAS_SIZE + glyph.atlas_origin[0]) * 4) as u64;
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,
@@ -179,13 +167,14 @@ impl FontManager {
                     buffer: &output_buffer,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset,
-                        bytes_per_row: Some((atlas_size * 4).try_into().unwrap()),
-                        rows_per_image: Some((atlas_size).try_into().unwrap()),
+                        bytes_per_row: Some((ATLAS_SIZE * 4) as u32),
+                        rows_per_image: Some(ATLAS_SIZE as u32),
                     },
                 },
                 size,
             );
         }
+
         queue.submit(Some(encoder.finish()));
         Ok(output_buffer)
     }
@@ -196,29 +185,28 @@ impl FontManager {
         queue: &wgpu::Queue,
         font_size: f32,
     ) -> Result<wgpu::Texture, wgpu::SurfaceError> {
+        assert!(
+            (font_size - RASTER_SIZE).abs() < f32::EPSILON,
+            "text layout and atlas raster size must match"
+        );
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("font atlasing command encoder"),
         });
         let rasterized_font = self.font_rasterize(font_size);
-
-        let atlas_size = 512;
-        let u8_size = std::mem::size_of::<u8>() as u32;
-        let output_buffer_size = (u8_size * atlas_size * atlas_size * 4) as wgpu::BufferAddress;
-        let output_buffer_desc = wgpu::BufferDescriptor {
-            size: output_buffer_size,
+        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: (ATLAS_SIZE * ATLAS_SIZE * 4) as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             label: Some("font atlas buffer"),
             mapped_at_creation: false,
-        };
-        let output_buffer = device.create_buffer(&output_buffer_desc);
+        });
         let output_buffer = self
             .make_font_buffer(rasterized_font, output_buffer, device, queue)
             .unwrap();
 
-        // Make Font Atlas Texture
         let size = wgpu::Extent3d {
-            width: atlas_size,
-            height: atlas_size,
+            width: ATLAS_SIZE as u32,
+            height: ATLAS_SIZE as u32,
             depth_or_array_layers: 1,
         };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -240,7 +228,7 @@ impl FontManager {
                 buffer: &output_buffer,
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(atlas_size * 4),
+                    bytes_per_row: Some((ATLAS_SIZE * 4) as u32),
                     rows_per_image: None,
                 },
             },
@@ -248,7 +236,7 @@ impl FontManager {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
-                aspect: Default::default(),
+                aspect: wgpu::TextureAspect::All,
             },
             size,
         );
@@ -257,53 +245,176 @@ impl FontManager {
         Ok(texture)
     }
 
-    fn get_render_data(&self, char_key: char) -> &FontRenderData {
-        match self.font_map.get(&char_key) {
-            Some(value) => value,
-            None => panic!("try to use unloaded font {}", char_key),
-        }
+    fn get_render_data(&self, character: char) -> &FontRenderData {
+        self.font_map
+            .get(&character)
+            .unwrap_or_else(|| panic!("try to use unloaded font {}", character))
     }
 
     pub fn make_instance_buffer(&self, text: &TextRenderData) -> Vec<ColorSpriteInstanceRaw> {
-        let line_space = 0.1;
-        let mut result = Vec::new();
-        let mut position = cgmath::Vector3 {
-            x: text.position[0],
-            y: text.position[1],
-            z: text.position[2],
-        };
+        let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+        layout.reset(&LayoutSettings {
+            x: 0.0,
+            y: 0.0,
+            ..LayoutSettings::default()
+        });
+        layout.append(
+            &[&self.font],
+            &FontdueTextStyle::new(text.content.as_str(), RASTER_SIZE, 0),
+        );
 
-        for txt in text.content.chars() {
-            if txt == ' ' {
-                // Use space advance - estimate as average character width
-                position.x += text.size[0] * 0.5;
+        let pixel_scale = [text.size[0] / RASTER_SIZE, text.size[1] / RASTER_SIZE];
+        let mut result = Vec::with_capacity(layout.glyphs().len());
+        let mut previous = None;
+        let mut kerning_offset = 0.0;
+
+        for glyph in layout.glyphs() {
+            if glyph.parent == '\n' || glyph.parent == '\r' {
+                previous = None;
+                kerning_offset = 0.0;
                 continue;
             }
-            if txt == '\n' {
-                position.y -= text.size[1] + line_space;
-                position.x = text.position[0];
+
+            if let Some(previous) = previous {
+                kerning_offset += self
+                    .font
+                    .horizontal_kern(previous, glyph.parent, RASTER_SIZE)
+                    .unwrap_or(0.0);
+            }
+            previous = Some(glyph.parent);
+
+            if glyph.width == 0 || glyph.height == 0 {
                 continue;
             }
 
-            let render_data = self.get_render_data(txt);
+            let render_data = self.get_render_data(glyph.parent);
+            let glyph_size = [
+                glyph.width as f32 * pixel_scale[0],
+                glyph.height as f32 * pixel_scale[1],
+            ];
+            let position = cgmath::Vector3 {
+                x: text.position[0]
+                    + (glyph.x + kerning_offset + glyph.width as f32 * 0.5) * pixel_scale[0],
+                y: text.position[1] - (glyph.y + glyph.height as f32 * 0.5) * pixel_scale[1],
+                z: text.position[2],
+            };
+            let model = (cgmath::Matrix4::from_translation(position)
+                * cgmath::Matrix4::from_nonuniform_scale(glyph_size[0], glyph_size[1], 1.0))
+            .into();
 
-            // Use consistent scaling for now - just use advance width for proportional spacing
-            let scale_matrix =
-                cgmath::Matrix4::from_nonuniform_scale(text.size[0], text.size[1], 1.0);
-            let translation_matrix = cgmath::Matrix4::from_translation(position);
-            let color = text.color;
-
-            let model = (translation_matrix * scale_matrix).into();
             result.push(ColorSpriteInstanceRaw {
                 uv: render_data.uv,
                 model,
-                color,
+                color: text.color,
             });
-
-            // Advance cursor by actual advance width
-            position.x += render_data.advance * text.size[0] / 24.0;
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn manager() -> FontManager {
+        let mut manager = FontManager::default();
+        manager.font_rasterize(RASTER_SIZE);
+        manager
+    }
+
+    fn text(content: &str) -> TextRenderData {
+        TextRenderData {
+            content: Arc::new(content.to_string()),
+            color: [1.0, 1.0, 1.0],
+            position: [10.0, 20.0, 0.5],
+            size: [RASTER_SIZE, RASTER_SIZE],
+        }
+    }
+
+    fn translation(instance: &ColorSpriteInstanceRaw) -> [f32; 2] {
+        [instance.model[3][0], instance.model[3][1]]
+    }
+
+    fn scale(instance: &ColorSpriteInstanceRaw) -> [f32; 2] {
+        [instance.model[0][0], instance.model[1][1]]
+    }
+
+    #[test]
+    fn applies_pair_kerning() {
+        let manager = manager();
+        let instances = manager.make_instance_buffer(&text("AV"));
+        let a_metrics = manager.font.metrics('A', RASTER_SIZE);
+        let v_metrics = manager.font.metrics('V', RASTER_SIZE);
+        let kern = manager
+            .font
+            .horizontal_kern('A', 'V', RASTER_SIZE)
+            .unwrap_or(0.0);
+        let expected_v_center = 10.0
+            + a_metrics.advance_width.ceil()
+            + v_metrics.bounds.xmin.floor()
+            + kern
+            + v_metrics.width as f32 * 0.5;
+
+        assert_eq!(instances.len(), 2);
+        assert!((translation(&instances[1])[0] - expected_v_center).abs() < 0.001);
+    }
+
+    #[test]
+    fn uses_actual_glyph_bitmap_dimensions() {
+        let manager = manager();
+        let instances = manager.make_instance_buffer(&text("iW"));
+        let i_size = scale(&instances[0]);
+        let w_size = scale(&instances[1]);
+
+        assert!(i_size[0] < w_size[0]);
+        assert_eq!(
+            i_size[0],
+            manager.font.metrics('i', RASTER_SIZE).width as f32
+        );
+        assert_eq!(
+            w_size[0],
+            manager.font.metrics('W', RASTER_SIZE).width as f32
+        );
+    }
+
+    #[test]
+    fn aligns_capital_and_descender_to_the_same_baseline() {
+        let manager = manager();
+        let instances = manager.make_instance_buffer(&text("Ag"));
+        let a_metrics = manager.font.metrics('A', RASTER_SIZE);
+        let g_metrics = manager.font.metrics('g', RASTER_SIZE);
+        let a_top = translation(&instances[0])[1] + scale(&instances[0])[1] * 0.5;
+        let g_top = translation(&instances[1])[1] + scale(&instances[1])[1] * 0.5;
+        let a_baseline = 20.0 - a_top + a_metrics.height as f32 + a_metrics.ymin as f32;
+        let g_baseline = 20.0 - g_top + g_metrics.height as f32 + g_metrics.ymin as f32;
+
+        assert!((a_baseline - g_baseline).abs() < 0.001);
+    }
+
+    #[test]
+    fn uses_font_metrics_for_spaces_and_new_lines() {
+        let manager = manager();
+        let spaced = manager.make_instance_buffer(&text("A A"));
+        let lines = manager.make_instance_buffer(&text("A\nA"));
+        let space_advance = manager.font.metrics(' ', RASTER_SIZE).advance_width.ceil();
+        let a_advance = manager.font.metrics('A', RASTER_SIZE).advance_width.ceil();
+        let line_height = manager
+            .font
+            .horizontal_line_metrics(RASTER_SIZE)
+            .unwrap()
+            .new_line_size
+            .ceil();
+
+        assert!(
+            (translation(&spaced[1])[0] - translation(&spaced[0])[0] - a_advance - space_advance)
+                .abs()
+                < 0.001
+        );
+        assert!((translation(&lines[0])[0] - translation(&lines[1])[0]).abs() < 0.001);
+        assert!(
+            (translation(&lines[0])[1] - translation(&lines[1])[1] - line_height).abs() < 0.001
+        );
     }
 }

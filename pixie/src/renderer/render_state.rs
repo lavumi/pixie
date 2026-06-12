@@ -5,6 +5,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::renderer::font_manager::FontManager;
+use crate::renderer::font_manager::RASTER_SIZE;
 use crate::renderer::gpu_resource_manager::GPUResourceManager;
 use crate::renderer::mesh::SpriteInstanceRaw;
 use crate::renderer::pipeline_manager::PipelineManager;
@@ -146,7 +147,7 @@ impl RenderState {
         // Generate font atlas from TTF at runtime
         let font_texture = self
             .font_manager
-            .make_font_atlas_rgba(&self.device, &self.queue, 24.0)
+            .make_font_atlas_rgba(&self.device, &self.queue, RASTER_SIZE)
             .await
             .unwrap();
         self.gpu_resource_manager

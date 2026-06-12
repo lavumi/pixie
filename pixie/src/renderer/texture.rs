@@ -12,15 +12,19 @@ pub struct Texture {
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    pub fn from_wgpu_texture(texture: wgpu::Texture, device: &wgpu::Device) -> Self {
+    pub fn from_wgpu_texture(
+        texture: wgpu::Texture,
+        device: &wgpu::Device,
+        filter: wgpu::FilterMode,
+    ) -> Self {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mag_filter: filter,
+            min_filter: filter,
+            mipmap_filter: filter,
             ..Default::default()
         });
         Self { view, sampler }
@@ -147,7 +151,7 @@ impl Texture {
         );
 
 
-        Self::from_wgpu_texture(texture, device)
+        Self::from_wgpu_texture(texture, device, wgpu::FilterMode::Nearest)
         // let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         //     address_mode_u: wgpu::AddressMode::ClampToEdge,
