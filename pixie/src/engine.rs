@@ -1,5 +1,6 @@
 use hecs::World;
 use instant::Instant;
+use std::fmt;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler, dpi::LogicalSize, dpi::PhysicalSize, event::*,
@@ -13,6 +14,63 @@ use crate::resources::{DeltaTime, ResourceContainer};
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
+
+#[derive(Debug)]
+pub enum EngineError {
+    Atlas(crate::AtlasError),
+    EventLoop(winit::error::EventLoopError),
+    Render(RenderError),
+    Startup(String),
+    Window(winit::error::OsError),
+}
+
+impl fmt::Display for EngineError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Atlas(error) => error.fmt(formatter),
+            Self::EventLoop(error) => write!(formatter, "event loop failed: {error}"),
+            Self::Render(error) => error.fmt(formatter),
+            Self::Startup(message) => formatter.write_str(message),
+            Self::Window(error) => write!(formatter, "window creation failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Atlas(error) => Some(error),
+            Self::EventLoop(error) => Some(error),
+            Self::Render(error) => Some(error),
+            Self::Startup(_) => None,
+            Self::Window(error) => Some(error),
+        }
+    }
+}
+
+impl From<crate::AtlasError> for EngineError {
+    fn from(value: crate::AtlasError) -> Self {
+        Self::Atlas(value)
+    }
+}
+
+impl From<winit::error::EventLoopError> for EngineError {
+    fn from(value: winit::error::EventLoopError) -> Self {
+        Self::EventLoop(value)
+    }
+}
+
+impl From<RenderError> for EngineError {
+    fn from(value: RenderError) -> Self {
+        Self::Render(value)
+    }
+}
+
+impl From<winit::error::OsError> for EngineError {
+    fn from(value: winit::error::OsError) -> Self {
+        Self::Window(value)
+    }
+}
 
 pub struct Engine<A: Application> {
     app: A,
@@ -31,8 +89,10 @@ pub struct Engine<A: Application> {
     title: String,
     initial_width: u32,
     initial_height: u32,
+    fatal_error: Option<EngineError>,
     #[cfg(target_arch = "wasm32")]
-    wasm_pending_rs: Option<std::rc::Rc<std::cell::RefCell<Option<RenderState>>>>,
+    wasm_pending_rs:
+        Option<std::rc::Rc<std::cell::RefCell<Option<Result<RenderState, RenderError>>>>>,
 }
 
 impl<A: Application> ApplicationHandler<()> for Engine<A> {
@@ -42,45 +102,56 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                 .with_title(self.title.clone())
                 .with_inner_size(LogicalSize::new(self.initial_width, self.initial_height));
 
-            let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+            let window = match event_loop.create_window(window_attributes) {
+                Ok(window) => Arc::new(window),
+                Err(error) => {
+                    self.exit_with_error(event_loop, error.into());
+                    return;
+                }
+            };
 
             #[cfg(target_arch = "wasm32")]
             {
                 use winit::platform::web::WindowExtWebSys;
-                web_sys::window()
-                    .and_then(|win| win.document())
-                    .and_then(|doc| {
-                        let dst = doc.get_element_by_id("wgpu-wasm")?;
-                        if let Some(canvas) = window.canvas() {
-                            let canvas = web_sys::Element::from(canvas);
-                            canvas.set_id("wasm-canvas");
-                            dst.append_child(&canvas).ok()?;
-                        }
-                        Some(())
-                    })
-                    .expect("Couldn't append canvas to document body.");
+                let canvas_attached =
+                    web_sys::window()
+                        .and_then(|win| win.document())
+                        .and_then(|doc| {
+                            let dst = doc.get_element_by_id("wgpu-wasm")?;
+                            if let Some(canvas) = window.canvas() {
+                                let canvas = web_sys::Element::from(canvas);
+                                canvas.set_id("wasm-canvas");
+                                dst.append_child(&canvas).ok()?;
+                            }
+                            Some(())
+                        });
+                if canvas_attached.is_none() {
+                    self.exit_with_error(
+                        event_loop,
+                        EngineError::Startup(
+                            "failed to append the rendering canvas to '#wgpu-wasm'".to_string(),
+                        ),
+                    );
+                    return;
+                }
 
                 use std::cell::RefCell;
                 use std::rc::Rc;
 
-                let pending: Rc<RefCell<Option<RenderState>>> = Rc::new(RefCell::new(None));
+                let pending: Rc<RefCell<Option<Result<RenderState, RenderError>>>> =
+                    Rc::new(RefCell::new(None));
                 let pending_clone = Rc::clone(&pending);
                 let window_clone = window.clone();
                 let w = self.initial_width;
                 let h = self.initial_height;
                 wasm_bindgen_futures::spawn_local(async move {
-                    let mut rs = match RenderState::new(window_clone, w, h).await {
-                        Ok(rs) => rs,
-                        Err(error) => {
-                            log::error!("{error}");
-                            return;
-                        }
-                    };
-                    if let Err(error) = rs.init_resources().await {
-                        log::error!("{error}");
-                        return;
+                    let result = async {
+                        let mut rs = RenderState::new(window_clone, w, h).await?;
+                        rs.init_resources().await?;
+                        Ok(rs)
                     }
-                    *pending_clone.borrow_mut() = Some(rs);
+                    .await;
+                    *pending_clone.borrow_mut() = Some(result);
                 });
 
                 self.wasm_pending_rs = Some(pending);
@@ -96,19 +167,16 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                 )) {
                     Ok(rs) => rs,
                     Err(error) => {
-                        log::error!("{error}");
-                        event_loop.exit();
+                        self.exit_with_error(event_loop, error.into());
                         return;
                     }
                 };
                 if let Err(error) = block_on(rs.init_resources()) {
-                    log::error!("{error}");
-                    event_loop.exit();
+                    self.exit_with_error(event_loop, error.into());
                     return;
                 }
                 if let Err(error) = Self::upload_pending_atlases(&mut self.resources, &mut rs) {
-                    log::error!("{error}");
-                    event_loop.exit();
+                    self.exit_with_error(event_loop, error.into());
                     return;
                 }
                 self.rs = Some(rs);
@@ -165,18 +233,26 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                             {
                                 // If async renderer finished, take it and finalize
                                 if self.rs.is_none() {
-                                    if let Some(holder) = &self.wasm_pending_rs {
-                                        if let Some(mut rs) = holder.borrow_mut().take() {
-                                            if let Err(error) = Self::upload_pending_atlases(
-                                                &mut self.resources,
-                                                &mut rs,
-                                            ) {
-                                                log::error!("{error}");
-                                                event_loop.exit();
+                                    let pending_result = self
+                                        .wasm_pending_rs
+                                        .as_ref()
+                                        .and_then(|holder| holder.borrow_mut().take());
+                                    if let Some(result) = pending_result {
+                                        let mut rs = match result {
+                                            Ok(rs) => rs,
+                                            Err(error) => {
+                                                self.exit_with_error(event_loop, error.into());
                                                 return;
                                             }
-                                            self.rs = Some(rs);
+                                        };
+                                        if let Err(error) = Self::upload_pending_atlases(
+                                            &mut self.resources,
+                                            &mut rs,
+                                        ) {
+                                            self.exit_with_error(event_loop, error.into());
+                                            return;
                                         }
+                                        self.rs = Some(rs);
                                     }
                                 }
                             }
@@ -219,7 +295,11 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                     }
                                 }
                                 Err(RenderError::Surface(wgpu::SurfaceError::OutOfMemory)) => {
-                                    event_loop.exit()
+                                    self.exit_with_error(
+                                        event_loop,
+                                        RenderError::Surface(wgpu::SurfaceError::OutOfMemory)
+                                            .into(),
+                                    );
                                 }
                                 Err(RenderError::Surface(wgpu::SurfaceError::Timeout)) => {
                                     log::warn!("Surface timeout")
@@ -228,8 +308,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                     log::warn!("Surface error: other")
                                 }
                                 Err(error) => {
-                                    log::error!("{error}");
-                                    event_loop.exit();
+                                    self.exit_with_error(event_loop, error.into());
                                 }
                             }
                         }
@@ -242,6 +321,16 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
 }
 
 impl<A: Application> Engine<A> {
+    fn exit_with_error(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        error: EngineError,
+    ) {
+        log::error!("{error}");
+        self.fatal_error = Some(error);
+        event_loop.exit();
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn new<T: Into<String>>(
         mut app: A,
@@ -288,6 +377,7 @@ impl<A: Application> Engine<A> {
             title: title.into(),
             initial_width: width,
             initial_height: height,
+            fatal_error: None,
             #[cfg(target_arch = "wasm32")]
             wasm_pending_rs: None,
         };
@@ -303,8 +393,8 @@ impl<A: Application> Engine<A> {
         height: u32,
         texture_atlases: Vec<TextureAtlasAsset>,
         dispatcher: Box<dyn UnifiedDispatcher + 'static>,
-    ) {
-        let event_loop = EventLoop::new().unwrap();
+    ) -> Result<(), EngineError> {
+        let event_loop = EventLoop::new()?;
 
         // Initialize World and Resources
         let mut world = World::new();
@@ -319,10 +409,7 @@ impl<A: Application> Engine<A> {
         resources.insert(DeltaTime(0.0));
         let mut atlas_registry = TextureAtlasRegistry::default();
         for asset in texture_atlases {
-            if let Err(error) = atlas_registry.register(asset) {
-                log::error!("{error}");
-                return;
-            }
+            atlas_registry.register(asset)?;
         }
         resources.insert(atlas_registry);
 
@@ -345,11 +432,16 @@ impl<A: Application> Engine<A> {
             title: title.into(),
             initial_width: width,
             initial_height: height,
+            fatal_error: None,
             #[cfg(target_arch = "wasm32")]
             wasm_pending_rs: None,
         };
 
-        event_loop.run_app(&mut engine).unwrap();
+        event_loop.run_app(&mut engine)?;
+        if let Some(error) = engine.fatal_error {
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Run the engine with the provided event loop
