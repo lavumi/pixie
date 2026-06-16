@@ -1,5 +1,9 @@
 use cgmath::Point3;
 
+const MIN_ORTHOGRAPHIC_HALF_HEIGHT: f32 = 0.1;
+const MIN_PERSPECTIVE_FOV_Y: f32 = 1.0;
+const MAX_PERSPECTIVE_FOV_Y: f32 = 179.0;
+
 pub struct Camera {
     eye: Point3<f32>,
     target: Point3<f32>,
@@ -113,6 +117,7 @@ impl Camera {
 
     #[allow(unused)]
     pub fn set_zoom(&mut self, height: f32) {
+        let height = height.max(MIN_ORTHOGRAPHIC_HALF_HEIGHT);
         let width = if self.aspect != 0.0 {
             self.aspect * height
         } else {
@@ -122,6 +127,31 @@ impl Camera {
         };
         self.right = width;
         self.top = height;
+    }
+
+    pub fn zoom(&self) -> f32 {
+        if self.perspective {
+            self.fov_y
+        } else {
+            self.top
+        }
+    }
+
+    pub fn zoom_in(&mut self, factor: f32) {
+        self.zoom_by(1.0 / factor);
+    }
+
+    pub fn zoom_out(&mut self, factor: f32) {
+        self.zoom_by(factor);
+    }
+
+    pub fn zoom_by(&mut self, factor: f32) {
+        let factor = factor.max(f32::EPSILON);
+        if self.perspective {
+            self.fov_y = (self.fov_y * factor).clamp(MIN_PERSPECTIVE_FOV_Y, MAX_PERSPECTIVE_FOV_Y);
+        } else {
+            self.set_zoom(self.top * factor);
+        }
     }
 
     pub fn get_view_proj(&self) -> [[f32; 4]; 4] {
@@ -162,3 +192,46 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 0.0,
     0.0, 0.0, 0.5, 1.0,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orthographic_zoom_in_reduces_visible_height() {
+        let mut camera = Camera::init_orthographic(20.0, 16.0 / 9.0);
+
+        camera.zoom_in(2.0);
+
+        assert_eq!(camera.zoom(), 10.0);
+    }
+
+    #[test]
+    fn orthographic_zoom_out_increases_visible_height() {
+        let mut camera = Camera::init_orthographic(20.0, 16.0 / 9.0);
+
+        camera.zoom_out(2.0);
+
+        assert_eq!(camera.zoom(), 40.0);
+    }
+
+    #[test]
+    fn orthographic_zoom_is_clamped_above_zero() {
+        let mut camera = Camera::init_orthographic(20.0, 16.0 / 9.0);
+
+        camera.set_zoom(0.0);
+
+        assert_eq!(camera.zoom(), MIN_ORTHOGRAPHIC_HALF_HEIGHT);
+    }
+
+    #[test]
+    fn perspective_zoom_is_clamped_to_valid_fov() {
+        let mut camera = Camera::init_perspective(16.0 / 9.0);
+
+        camera.zoom_in(1_000.0);
+        assert_eq!(camera.zoom(), MIN_PERSPECTIVE_FOV_Y);
+
+        camera.zoom_out(1_000.0);
+        assert_eq!(camera.zoom(), MAX_PERSPECTIVE_FOV_Y);
+    }
+}
