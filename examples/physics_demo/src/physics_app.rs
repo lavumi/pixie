@@ -2,7 +2,9 @@ use hecs::{Entity, World};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Gravity, ResourceContainer, Sprite, Text, TextStyle, Transform};
+use pixie::{
+    Application, ClearColor, Gravity, ResourceContainer, Sprite, Text, TextStyle, Transform,
+};
 use pixie::{BodyType, BoxCollider, CircleCollider, Force, RigidBody, Velocity};
 
 // systems are now built and owned by the engine; keep module private here
@@ -62,6 +64,7 @@ impl Application for PhysicsApp {
         // In hecs, we don't need to register components
 
         // Insert resources (Camera and DeltaTime are created automatically by Engine)
+        resources.insert(ClearColor::new(0.02, 0.03, 0.06, 1.0));
         resources.insert(Gravity::default());
 
         // Create boundaries (static walls)

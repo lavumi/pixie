@@ -10,7 +10,7 @@ use winit::{
 use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
-use crate::resources::{DeltaTime, ResourceContainer};
+use crate::resources::{ClearColor, DeltaTime, ResourceContainer};
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
@@ -175,6 +175,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                     self.exit_with_error(event_loop, error.into());
                     return;
                 }
+                Self::apply_clear_color(&self.resources, &mut rs);
                 if let Err(error) = Self::upload_pending_atlases(&mut self.resources, &mut rs) {
                     self.exit_with_error(event_loop, error.into());
                     return;
@@ -245,6 +246,7 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                                 return;
                                             }
                                         };
+                                        Self::apply_clear_color(&self.resources, &mut rs);
                                         if let Err(error) = Self::upload_pending_atlases(
                                             &mut self.resources,
                                             &mut rs,
@@ -461,6 +463,12 @@ impl<A: Application> Engine<A> {
         self.app.update(&mut self.world, &mut self.resources, dt);
     }
 
+    fn apply_clear_color(resources: &ResourceContainer, render_state: &mut RenderState) {
+        if let Some(color) = resources.get::<ClearColor>() {
+            render_state.set_clear_color((*color).into());
+        }
+    }
+
     fn upload_pending_atlases(
         resources: &mut ResourceContainer,
         render_state: &mut RenderState,
@@ -489,6 +497,7 @@ impl<A: Application> Engine<A> {
             None => return Ok(()),
         };
         Self::upload_pending_atlases(&mut self.resources, rs)?;
+        Self::apply_clear_color(&self.resources, rs);
         let frame = self
             .render_extractor
             .extract(&self.world, &self.resources)?;
