@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "pixie",
     "examples/flappy_bird",
-    "examples/physics_demo"
+    "examples/physics_demo",
+    "examples/prey_predator"
 ]
 
 [workspace.dependencies]
