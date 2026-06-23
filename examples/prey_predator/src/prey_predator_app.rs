@@ -1,14 +1,18 @@
 use hecs::{Entity, World};
 use rand::rngs::ThreadRng;
 use rand::{thread_rng, Rng};
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use pixie::{Application, Camera, ResourceContainer, Sprite, Text, TextStyle, Transform};
+use pixie::{
+    Application, Camera, ResourceContainer, Sprite, Text, TextCoordinateSpace, TextStyle, Transform,
+};
 
 use crate::components::{Agent, Species};
 use crate::config;
 use crate::resources::{SimulationConfig, SimulationStats};
+
+const MOUSE_WHEEL_ZOOM_FACTOR: f32 = 1.15;
 
 pub struct PreyPredatorApp {
     paused: bool,
@@ -73,6 +77,10 @@ impl Application for PreyPredatorApp {
                 }
                 _ => false,
             },
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.handle_mouse_wheel(resources, delta);
+                true
+            }
             _ => false,
         }
     }
@@ -85,12 +93,13 @@ impl Application for PreyPredatorApp {
 impl PreyPredatorApp {
     fn create_hud(&mut self, world: &mut World) {
         self.hud_text_entity = Some(world.spawn((
-            Transform::new([-41.5, 22.5, 0.0], [1.0, 1.0]),
+            Transform::new([20.0, 32.0, 0.0], [1.0, 1.0]),
             Text::default(),
             TextStyle {
-                size: [0.55, 0.55],
+                size: [18.0, 18.0],
                 color: [1.0, 1.0, 1.0],
-                z_index: 2.0,
+                z_index: -10.0,
+                coordinate_space: TextCoordinateSpace::Screen,
             },
         )));
     }
@@ -150,6 +159,25 @@ impl PreyPredatorApp {
         self.update_hud(world, resources);
     }
 
+    fn handle_mouse_wheel(&self, resources: &mut ResourceContainer, delta: &MouseScrollDelta) {
+        let scroll_y = match delta {
+            MouseScrollDelta::LineDelta(_, y) => *y,
+            MouseScrollDelta::PixelDelta(position) => position.y as f32,
+        };
+
+        if scroll_y.abs() < f32::EPSILON {
+            return;
+        }
+
+        if let Some(camera) = resources.get_mut::<Camera>() {
+            if scroll_y > 0.0 {
+                camera.zoom_in(MOUSE_WHEEL_ZOOM_FACTOR);
+            } else {
+                camera.zoom_out(MOUSE_WHEEL_ZOOM_FACTOR);
+            }
+        }
+    }
+
     fn refresh_stats(&self, world: &World, resources: &mut ResourceContainer, dt: f32) {
         let mut prey_alive = 0;
         let mut predators_alive = 0;
@@ -183,11 +211,17 @@ impl PreyPredatorApp {
             return;
         };
 
+        let zoom = resources
+            .get::<Camera>()
+            .map(|camera| camera.zoom())
+            .unwrap_or_default();
+
         if let Ok(mut text) = world.get::<&mut Text>(entity) {
             let status = if self.paused { "Paused" } else { "Running" };
             text.content = format!(
-                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nPrey: {} of {}\nPredators: {} of {}\n\nSpace Pause R Reset",
+                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nZoom: {:.1}\nPrey: {} of {}\nPredators: {} of {}\n\nSpace Pause R Reset\nMouse Wheel Zoom",
                 stats.elapsed_time,
+                zoom,
                 stats.prey_alive,
                 config.max_prey,
                 stats.predators_alive,

@@ -22,7 +22,8 @@ pub struct RenderFrame<'a> {
     camera_uniform: [[f32; 4]; 4],
     sprite_render_data: &'a HashMap<AtlasId, Vec<SpriteRenderData>>,
     sprite_atlases: &'a [AtlasId],
-    texts: &'a [TextRenderData],
+    world_texts: &'a [TextRenderData],
+    screen_texts: &'a [TextRenderData],
 }
 
 impl<'a> RenderFrame<'a> {
@@ -30,13 +31,15 @@ impl<'a> RenderFrame<'a> {
         camera_uniform: [[f32; 4]; 4],
         sprite_render_data: &'a HashMap<AtlasId, Vec<SpriteRenderData>>,
         sprite_atlases: &'a [AtlasId],
-        texts: &'a [TextRenderData],
+        world_texts: &'a [TextRenderData],
+        screen_texts: &'a [TextRenderData],
     ) -> Self {
         Self {
             camera_uniform,
             sprite_render_data,
             sprite_atlases,
-            texts,
+            world_texts,
+            screen_texts,
         }
     }
 
@@ -56,8 +59,12 @@ impl<'a> RenderFrame<'a> {
         self.sprite_atlases.iter()
     }
 
-    pub fn texts(&self) -> &[TextRenderData] {
-        self.texts
+    pub fn world_texts(&self) -> &[TextRenderData] {
+        self.world_texts
+    }
+
+    pub fn screen_texts(&self) -> &[TextRenderData] {
+        self.screen_texts
     }
 }
 

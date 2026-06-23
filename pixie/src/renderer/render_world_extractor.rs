@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use hecs::World;
 
-use crate::components::{Sprite, Text, TextStyle, Transform};
+use crate::components::{Sprite, Text, TextCoordinateSpace, TextStyle, Transform};
 use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
 use crate::{AtlasError, AtlasId, TextureAtlasRegistry};
@@ -13,7 +13,8 @@ pub struct RenderWorldExtractor {
     sprite_render_data: HashMap<AtlasId, Vec<SpriteRenderData>>,
     sprite_atlases: Vec<AtlasId>,
     active_sprite_atlases: HashSet<AtlasId>,
-    text_render_buffer: Vec<TextRenderData>,
+    world_text_render_buffer: Vec<TextRenderData>,
+    screen_text_render_buffer: Vec<TextRenderData>,
 }
 
 impl RenderWorldExtractor {
@@ -22,7 +23,8 @@ impl RenderWorldExtractor {
             sprite_render_data: HashMap::with_capacity(sprite_atlas_count),
             sprite_atlases: Vec::with_capacity(sprite_atlas_count),
             active_sprite_atlases: HashSet::with_capacity(sprite_atlas_count),
-            text_render_buffer: Vec::with_capacity(text_count),
+            world_text_render_buffer: Vec::with_capacity(text_count),
+            screen_text_render_buffer: Vec::with_capacity(text_count),
         }
     }
 
@@ -43,7 +45,8 @@ impl RenderWorldExtractor {
             camera_uniform,
             &self.sprite_render_data,
             &self.sprite_atlases,
-            &self.text_render_buffer,
+            &self.world_text_render_buffer,
+            &self.screen_text_render_buffer,
         ))
     }
 
@@ -92,11 +95,17 @@ impl RenderWorldExtractor {
     }
 
     fn extract_texts(&mut self, world: &World) {
-        self.text_render_buffer.clear();
+        self.world_text_render_buffer.clear();
+        self.screen_text_render_buffer.clear();
 
         for (_, (transform, text, style)) in world.query::<(&Transform, &Text, &TextStyle)>().iter()
         {
-            self.text_render_buffer.push(TextRenderData {
+            let buffer = match style.coordinate_space {
+                TextCoordinateSpace::World => &mut self.world_text_render_buffer,
+                TextCoordinateSpace::Screen => &mut self.screen_text_render_buffer,
+            };
+
+            buffer.push(TextRenderData {
                 content: Arc::new(text.content.clone()),
                 position: [transform.position[0], transform.position[1], style.z_index],
                 size: style.size,
@@ -141,6 +150,7 @@ mod tests {
                 size: [2.0, 3.0],
                 color: [0.1, 0.2, 0.3],
                 z_index: 0.75,
+                ..TextStyle::default()
             },
         ));
 
@@ -157,11 +167,11 @@ mod tests {
         assert_eq!(batches[0].1[0].rotation, 0.25);
         assert_eq!(batches[0].1[0].uv, [0.0, 0.5, 0.5, 1.0]);
 
-        assert_eq!(frame.texts().len(), 1);
-        assert_eq!(frame.texts()[0].content.as_str(), "score");
-        assert_eq!(frame.texts()[0].position, [6.0, 7.0, 0.75]);
-        assert_eq!(frame.texts()[0].size, [2.0, 3.0]);
-        assert_eq!(frame.texts()[0].color, [0.1, 0.2, 0.3]);
+        assert_eq!(frame.world_texts().len(), 1);
+        assert_eq!(frame.world_texts()[0].content.as_str(), "score");
+        assert_eq!(frame.world_texts()[0].position, [6.0, 7.0, 0.75]);
+        assert_eq!(frame.world_texts()[0].size, [2.0, 3.0]);
+        assert_eq!(frame.world_texts()[0].color, [0.1, 0.2, 0.3]);
     }
 
     #[test]
@@ -214,6 +224,7 @@ mod tests {
                 size: [1.0, 1.0],
                 color: [1.0, 1.0, 1.0],
                 z_index: 0.5,
+                ..TextStyle::default()
             },
         ));
         let resources = resources_with_camera();
@@ -231,7 +242,7 @@ mod tests {
         }
 
         let frame = extractor.extract(&world, &resources).unwrap();
-        let text = &frame.texts()[0];
+        let text = &frame.world_texts()[0];
 
         assert_eq!(text.content.as_str(), "after");
         assert_eq!(text.position, [3.0, 4.0, 0.75]);
@@ -273,11 +284,50 @@ mod tests {
 
         assert_eq!(frame.sprite_batches().count(), 0);
         assert_eq!(frame.sprite_atlases().count(), 0);
-        assert!(frame.texts().is_empty());
+        assert!(frame.world_texts().is_empty());
+        assert!(frame.screen_texts().is_empty());
         assert_eq!(
             frame.camera_uniform(),
             resources.get::<Camera>().unwrap().get_view_proj()
         );
+    }
+
+    #[test]
+    fn separates_screen_text_from_world_text() {
+        let mut world = World::new();
+        world.spawn((
+            Transform::new([10.0, 20.0, 0.0], [1.0, 1.0]),
+            Text {
+                content: "hud".to_string(),
+            },
+            TextStyle {
+                size: [16.0, 16.0],
+                color: [1.0, 1.0, 1.0],
+                z_index: 0.5,
+                coordinate_space: TextCoordinateSpace::Screen,
+            },
+        ));
+        world.spawn((
+            Transform::new([3.0, 4.0, 0.0], [1.0, 1.0]),
+            Text {
+                content: "label".to_string(),
+            },
+            TextStyle {
+                size: [1.0, 1.0],
+                color: [1.0, 1.0, 1.0],
+                z_index: 0.5,
+                ..TextStyle::default()
+            },
+        ));
+
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+        let frame = extractor.extract(&world, &resources).unwrap();
+
+        assert_eq!(frame.world_texts().len(), 1);
+        assert_eq!(frame.world_texts()[0].content.as_str(), "label");
+        assert_eq!(frame.screen_texts().len(), 1);
+        assert_eq!(frame.screen_texts()[0].content.as_str(), "hud");
     }
 
     #[test]

@@ -14,6 +14,14 @@ use crate::renderer::texture;
 use crate::renderer::RenderError;
 use crate::AtlasId;
 
+#[rustfmt::skip]
+const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.0,
+    0.0, 0.0, 0.5, 1.0,
+);
+
 #[derive(Default)]
 struct SpriteInstanceBuffers {
     by_atlas: HashMap<AtlasId, Vec<SpriteInstanceRaw>>,
@@ -222,13 +230,37 @@ impl RenderState {
         }
     }
     fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) -> Result<(), RenderError> {
-        let camera_buffer = self
-            .gpu_resource_manager
-            .get_buffer("camera_matrix")
-            .ok_or_else(|| RenderError::MissingGpuResource {
+        self.update_named_camera_buffer("camera_matrix", camera_uniform)
+    }
+
+    fn update_ui_camera_buffer(&self) -> Result<(), RenderError> {
+        let half_width = self.config.width as f32 * 0.5;
+        let half_height = self.config.height as f32 * 0.5;
+        let camera_uniform = (OPENGL_TO_WGPU_MATRIX
+            * cgmath::ortho(
+                -half_width,
+                half_width,
+                -half_height,
+                half_height,
+                -100.0,
+                100.0,
+            ))
+        .into();
+
+        self.update_named_camera_buffer("ui_camera_matrix", camera_uniform)
+    }
+
+    fn update_named_camera_buffer(
+        &self,
+        name: &str,
+        camera_uniform: [[f32; 4]; 4],
+    ) -> Result<(), RenderError> {
+        let camera_buffer = self.gpu_resource_manager.get_buffer(name).ok_or_else(|| {
+            RenderError::MissingGpuResource {
                 resource_type: "buffer",
-                name: "camera_matrix".to_string(),
-            })?;
+                name: name.to_string(),
+            }
+        })?;
         self.queue
             .write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
         Ok(())
@@ -236,8 +268,10 @@ impl RenderState {
 
     fn update_frame(&mut self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
         self.update_camera_buffer(frame.camera_uniform())?;
+        self.update_ui_camera_buffer()?;
         self.update_sprite_instances(frame)?;
-        self.update_text_instance(frame.texts());
+        self.update_text_instance("world_text", frame.world_texts());
+        self.update_screen_text_instance(frame.screen_texts());
         Ok(())
     }
 
@@ -258,17 +292,34 @@ impl RenderState {
         Ok(())
     }
 
-    fn update_text_instance(&mut self, texts: &[TextRenderData]) {
+    fn update_text_instance(&mut self, mesh_name: &str, texts: &[TextRenderData]) {
         let sprite_instances = texts
             .iter()
             .flat_map(|text| self.font_manager.make_instance_buffer(text))
             .collect::<Vec<_>>();
 
         self.gpu_resource_manager.update_color_sprite_instances(
+            mesh_name,
             &self.device,
             &self.queue,
             sprite_instances,
         );
+    }
+
+    fn update_screen_text_instance(&mut self, texts: &[TextRenderData]) {
+        let half_width = self.config.width as f32 * 0.5;
+        let half_height = self.config.height as f32 * 0.5;
+        let converted = texts
+            .iter()
+            .map(|text| {
+                let mut text = text.clone();
+                text.position[0] -= half_width;
+                text.position[1] = half_height - text.position[1];
+                text
+            })
+            .collect::<Vec<_>>();
+
+        self.update_text_instance("screen_text", &converted);
     }
 
     fn render(&self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
@@ -323,7 +374,14 @@ impl RenderState {
 
             let render_pipeline = self.pipeline_manager.get_pipeline("font_pl");
             render_pass.set_pipeline(render_pipeline);
-            self.gpu_resource_manager.render_ui(&mut render_pass);
+            self.gpu_resource_manager
+                .set_bind_group(&mut render_pass, "camera");
+            self.gpu_resource_manager
+                .render_text(&mut render_pass, "world_text");
+            self.gpu_resource_manager
+                .set_bind_group(&mut render_pass, "ui_camera");
+            self.gpu_resource_manager
+                .render_text(&mut render_pass, "screen_text");
         }
 
         self.queue.submit(iter::once(encoder.finish()));

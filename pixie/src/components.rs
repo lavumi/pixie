@@ -66,10 +66,20 @@ pub struct Text {
 
 #[derive(Clone)]
 pub struct TextStyle {
-    /// World-space size of the font em square rasterized at 48 pixels.
+    /// Size of the font em square rasterized at 48 pixels.
+    ///
+    /// Interpreted in world units for `TextCoordinateSpace::World` and pixels
+    /// for `TextCoordinateSpace::Screen`.
     pub size: [f32; 2],
     pub color: [f32; 3],
     pub z_index: f32,
+    pub coordinate_space: TextCoordinateSpace,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TextCoordinateSpace {
+    World,
+    Screen,
 }
 
 impl Default for TextStyle {
@@ -78,6 +88,7 @@ impl Default for TextStyle {
             size: [1.0, 1.0],
             color: [1.0, 1.0, 1.0],
             z_index: 1.0,
+            coordinate_space: TextCoordinateSpace::World,
         }
     }
 }

@@ -20,13 +20,14 @@ pub struct GPUResourceManager {
     buffers: HashMap<String, Arc<Buffer>>,
     atlas_bind_groups: HashMap<AtlasId, Arc<BindGroup>>,
     meshes_by_atlas: HashMap<AtlasId, Mesh>,
-    ui_mesh: Option<Mesh>,
+    text_meshes: HashMap<String, Mesh>,
 }
 
 impl GPUResourceManager {
     pub fn initialize(&mut self, device: &Device) {
         self.init_base_layouts(device);
         self.init_camera_bind_group(device);
+        self.init_ui_camera_bind_group(device);
     }
 
     /// Load a texture atlas and automatically create a default quad mesh for it
@@ -128,6 +129,30 @@ impl GPUResourceManager {
         });
         self.add_buffer("camera_matrix", camera_buffer);
         self.add_bind_group("camera", 0, camera_bind_group);
+    }
+
+    fn init_ui_camera_bind_group(&mut self, device: &Device) {
+        let camera_uniform: [[f32; 4]; 4] = cgmath::Matrix4::identity().into();
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("UI Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let resources = camera_buffer.as_entire_binding();
+        let camera_bind_group_layout = self
+            .get_bind_group_layout("camera_bind_group_layout")
+            .unwrap();
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: resources,
+            }],
+            label: Some("ui_camera_bind_group"),
+        });
+        self.add_buffer("ui_camera_matrix", camera_buffer);
+        self.add_bind_group("ui_camera", 0, camera_bind_group);
     }
 
     fn make_bind_group<T: Into<String> + Copy>(
@@ -307,13 +332,14 @@ impl GPUResourceManager {
 
     pub fn update_color_sprite_instances(
         &mut self,
+        mesh_name: &str,
         device: &Device,
         queue: &Queue,
         sprite_instances: Vec<ColorSpriteInstanceRaw>,
     ) {
         let mesh = self
-            .ui_mesh
-            .as_mut()
+            .text_meshes
+            .get_mut(mesh_name)
             .expect("UI mesh must be initialized before text rendering");
         if sprite_instances.is_empty() {
             mesh.num_instances = 0;
@@ -329,7 +355,7 @@ impl GPUResourceManager {
         } else {
             log::debug!(
                 "update_color_sprite_instances {} before : {} , after : {}",
-                "font",
+                mesh_name,
                 mesh.num_instances,
                 sprite_instances.len()
             );
@@ -365,13 +391,16 @@ impl GPUResourceManager {
     }
 
     pub fn init_ui_meshes(&mut self, device: &Device) {
-        self.ui_mesh = Some(make_quad_mesh(device));
+        self.text_meshes
+            .insert("world_text".to_string(), make_quad_mesh(device));
+        self.text_meshes
+            .insert("screen_text".to_string(), make_quad_mesh(device));
     }
 
-    pub fn render_ui<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
+    pub fn render_text<'a>(&'a self, render_pass: &mut RenderPass<'a>, mesh_name: &str) {
         let mesh = self
-            .ui_mesh
-            .as_ref()
+            .text_meshes
+            .get(mesh_name)
             .expect("UI mesh must be initialized before text rendering");
         if mesh.instance_buffer.is_none() {
             return;

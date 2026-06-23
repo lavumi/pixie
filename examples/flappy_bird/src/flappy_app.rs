@@ -67,6 +67,7 @@ impl Application for FlappyApplication {
                 size: [0.5, 0.5],
                 color: [0.0, 0.0, 0.0],
                 z_index: 1.0,
+                ..TextStyle::default()
             },
         )));
 
@@ -83,6 +84,7 @@ impl Application for FlappyApplication {
                 size: [0.5, 0.5],
                 color: [0.0, 0.0, 0.0],
                 z_index: 1.0,
+                ..TextStyle::default()
             },
         )));
 
@@ -283,6 +285,7 @@ impl FlappyApplication {
                             size: [0.5, 0.5],
                             color: [0.0, 0.0, 0.0],
                             z_index: 1.0,
+                            ..TextStyle::default()
                         },
                     )));
                 }
