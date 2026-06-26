@@ -10,7 +10,9 @@ use winit::{
 use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
-use crate::resources::{ClearColor, DeltaTime, ResourceContainer};
+use crate::resources::{
+    Camera, CameraController, ClearColor, DeltaTime, ResourceContainer, WindowSize,
+};
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::block_on;
@@ -210,6 +212,8 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                     .app
                     .handle_input(&mut self.world, &mut self.resources, &event)
                 {
+                    Self::handle_camera_input(&mut self.resources, &event);
+
                     match event {
                         WindowEvent::CloseRequested => event_loop.exit(),
                         WindowEvent::KeyboardInput {
@@ -358,6 +362,8 @@ impl<A: Application> Engine<A> {
             20.0,
             aspect_ratio,
         ));
+        resources.insert(CameraController::default());
+        resources.insert(WindowSize::new(width, height));
         resources.insert(DeltaTime(0.0));
         resources.insert(TextureAtlasRegistry::default());
 
@@ -408,6 +414,8 @@ impl<A: Application> Engine<A> {
             20.0,
             aspect_ratio,
         ));
+        resources.insert(CameraController::default());
+        resources.insert(WindowSize::new(width, height));
         resources.insert(DeltaTime(0.0));
         let mut atlas_registry = TextureAtlasRegistry::default();
         for asset in texture_atlases {
@@ -453,9 +461,25 @@ impl<A: Application> Engine<A> {
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
+        self.resources
+            .insert(WindowSize::new(new_size.width, new_size.height));
         if let Some(rs) = &mut self.rs {
             rs.resize(new_size);
         }
+    }
+
+    fn handle_camera_input(resources: &mut ResourceContainer, event: &WindowEvent) {
+        let Some(mut controller) = resources.remove::<CameraController>() else {
+            return;
+        };
+
+        if let Some(window_size) = resources.get::<WindowSize>().copied() {
+            if let Some(camera) = resources.get_mut::<Camera>() {
+                controller.handle_event(event, camera, window_size);
+            }
+        }
+
+        resources.insert(controller);
     }
 
     fn update(&mut self, dt: f32) {

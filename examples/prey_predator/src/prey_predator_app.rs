@@ -1,18 +1,16 @@
 use hecs::{Entity, World};
 use rand::rngs::ThreadRng;
 use rand::{thread_rng, Rng};
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use pixie::{
     Application, Camera, ResourceContainer, Sprite, Text, TextCoordinateSpace, TextStyle, Transform,
 };
 
-use crate::components::{Agent, Species};
+use crate::components::{Agent, AgentMotion, Species};
 use crate::config;
 use crate::resources::{SimulationConfig, SimulationStats};
-
-const MOUSE_WHEEL_ZOOM_FACTOR: f32 = 1.15;
 
 pub struct PreyPredatorApp {
     paused: bool,
@@ -46,6 +44,7 @@ impl Application for PreyPredatorApp {
         });
         resources.insert(SimulationStats::default());
 
+        self.create_world_area(world);
         self.create_hud(world);
         self.spawn_initial_agents(world, resources);
         self.refresh_stats(world, resources, 0.0);
@@ -55,6 +54,15 @@ impl Application for PreyPredatorApp {
     fn update(&mut self, world: &mut World, resources: &mut ResourceContainer, dt: f32) {
         self.refresh_stats(world, resources, dt);
         self.update_hud(world, resources);
+    }
+
+    fn fixed_update(
+        &mut self,
+        world: &mut World,
+        resources: &mut ResourceContainer,
+        fixed_dt: f32,
+    ) {
+        self.update_agent_motion(world, resources, fixed_dt);
     }
 
     fn handle_input(
@@ -77,10 +85,6 @@ impl Application for PreyPredatorApp {
                 }
                 _ => false,
             },
-            WindowEvent::MouseWheel { delta, .. } => {
-                self.handle_mouse_wheel(resources, delta);
-                true
-            }
             _ => false,
         }
     }
@@ -91,6 +95,43 @@ impl Application for PreyPredatorApp {
 }
 
 impl PreyPredatorApp {
+    fn create_world_area(&self, world: &mut World) {
+        let width = config::WORLD_WIDTH;
+        let height = config::WORLD_HEIGHT;
+        let border = config::WORLD_BORDER_THICKNESS;
+        let half_width = width * 0.5;
+        let half_height = height * 0.5;
+
+        world.spawn((
+            Transform::new([0.0, 0.0, 0.0], [width, height]),
+            Sprite {
+                uv: [0.0, 1.0, 0.0, 1.0],
+                atlas: "area_fill".into(),
+            },
+        ));
+
+        for (position, size) in [
+            (
+                [0.0, half_height + border * 0.5, 0.1],
+                [width + border, border],
+            ),
+            (
+                [0.0, -half_height - border * 0.5, 0.1],
+                [width + border, border],
+            ),
+            ([-half_width - border * 0.5, 0.0, 0.1], [border, height]),
+            ([half_width + border * 0.5, 0.0, 0.1], [border, height]),
+        ] {
+            world.spawn((
+                Transform::new(position, size),
+                Sprite {
+                    uv: [0.0, 1.0, 0.0, 1.0],
+                    atlas: "area_border".into(),
+                },
+            ));
+        }
+    }
+
     fn create_hud(&mut self, world: &mut World) {
         self.hud_text_entity = Some(world.spawn((
             Transform::new([20.0, 32.0, 0.0], [1.0, 1.0]),
@@ -126,10 +167,26 @@ impl PreyPredatorApp {
         let y = self.rng.gen_range(-half_height..half_height);
         let rotation = self.rng.gen_range(0.0..std::f32::consts::TAU);
 
-        let (atlas, size, z) = match species {
-            Species::Prey => ("prey", config::PREY_SIZE, 0.3),
-            Species::Predator => ("predator", config::PREDATOR_SIZE, 0.4),
+        let (atlas, size, z, max_abs_speed, max_abs_angular_velocity) = match species {
+            Species::Prey => (
+                "prey",
+                config::PREY_SIZE,
+                0.3,
+                config::PREY_MAX_ABS_SPEED,
+                config::PREY_MAX_ABS_ANGULAR_VELOCITY,
+            ),
+            Species::Predator => (
+                "predator",
+                config::PREDATOR_SIZE,
+                0.4,
+                config::PREDATOR_MAX_ABS_SPEED,
+                config::PREDATOR_MAX_ABS_ANGULAR_VELOCITY,
+            ),
         };
+        let speed = self.random_signed_min_magnitude(max_abs_speed, 0.35);
+        let angular_velocity = self
+            .rng
+            .gen_range(-max_abs_angular_velocity..max_abs_angular_velocity);
 
         world.spawn((
             Transform::with_rotation([x, y, z], size, rotation),
@@ -138,7 +195,22 @@ impl PreyPredatorApp {
                 atlas: atlas.into(),
             },
             Agent { species },
+            AgentMotion::new(
+                speed,
+                max_abs_speed,
+                angular_velocity,
+                max_abs_angular_velocity,
+            ),
         ));
+    }
+
+    fn random_signed_min_magnitude(&mut self, max_abs: f32, min_ratio: f32) -> f32 {
+        let magnitude = self.rng.gen_range(max_abs * min_ratio..max_abs);
+        if self.rng.gen_bool(0.5) {
+            magnitude
+        } else {
+            -magnitude
+        }
     }
 
     fn reset(&mut self, world: &mut World, resources: &mut ResourceContainer) {
@@ -154,27 +226,55 @@ impl PreyPredatorApp {
         }
 
         resources.insert(SimulationStats::default());
+        self.create_world_area(world);
         self.spawn_initial_agents(world, resources);
         self.refresh_stats(world, resources, 0.0);
         self.update_hud(world, resources);
     }
 
-    fn handle_mouse_wheel(&self, resources: &mut ResourceContainer, delta: &MouseScrollDelta) {
-        let scroll_y = match delta {
-            MouseScrollDelta::LineDelta(_, y) => *y,
-            MouseScrollDelta::PixelDelta(position) => position.y as f32,
+    fn update_agent_motion(&self, world: &mut World, resources: &ResourceContainer, fixed_dt: f32) {
+        let Some(config) = resources.get::<SimulationConfig>() else {
+            return;
         };
 
-        if scroll_y.abs() < f32::EPSILON {
-            return;
+        for (_entity, (transform, motion)) in
+            world.query::<(&mut Transform, &mut AgentMotion)>().iter()
+        {
+            motion.speed = motion
+                .speed
+                .clamp(-motion.max_abs_speed, motion.max_abs_speed);
+            motion.angular_velocity = motion.angular_velocity.clamp(
+                -motion.max_abs_angular_velocity,
+                motion.max_abs_angular_velocity,
+            );
+
+            transform.rotation += motion.angular_velocity * fixed_dt;
+            let direction = [transform.rotation.cos(), transform.rotation.sin()];
+            transform.position[0] += direction[0] * motion.speed * fixed_dt;
+            transform.position[1] += direction[1] * motion.speed * fixed_dt;
+
+            Self::wrap_position(
+                &mut transform.position,
+                config.world_width,
+                config.world_height,
+            );
+        }
+    }
+
+    fn wrap_position(position: &mut [f32; 3], world_width: f32, world_height: f32) {
+        let half_width = world_width * 0.5;
+        let half_height = world_height * 0.5;
+
+        if position[0] > half_width {
+            position[0] -= world_width;
+        } else if position[0] < -half_width {
+            position[0] += world_width;
         }
 
-        if let Some(camera) = resources.get_mut::<Camera>() {
-            if scroll_y > 0.0 {
-                camera.zoom_in(MOUSE_WHEEL_ZOOM_FACTOR);
-            } else {
-                camera.zoom_out(MOUSE_WHEEL_ZOOM_FACTOR);
-            }
+        if position[1] > half_height {
+            position[1] -= world_height;
+        } else if position[1] < -half_height {
+            position[1] += world_height;
         }
     }
 
@@ -219,7 +319,7 @@ impl PreyPredatorApp {
         if let Ok(mut text) = world.get::<&mut Text>(entity) {
             let status = if self.paused { "Paused" } else { "Running" };
             text.content = format!(
-                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nZoom: {:.1}\nPrey: {} of {}\nPredators: {} of {}\n\nSpace Pause R Reset\nMouse Wheel Zoom",
+                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nZoom: {:.1}\nPrey: {} of {}\nPredators: {} of {}\n\nSpace Pause R Reset\nMouse Wheel Zoom\nLeft Drag Pan",
                 stats.elapsed_time,
                 zoom,
                 stats.prey_alive,

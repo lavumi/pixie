@@ -34,6 +34,14 @@ async fn run() -> Result<(), pixie::EngineError> {
     let dispatcher = system::build();
 
     let texture_atlases = vec![
+        pixie::TextureAtlasAsset::from_static(
+            "area_fill",
+            include_bytes!("../assets/area_fill.png"),
+        ),
+        pixie::TextureAtlasAsset::from_static(
+            "area_border",
+            include_bytes!("../assets/area_border.png"),
+        ),
         pixie::TextureAtlasAsset::from_static("prey", include_bytes!("../assets/prey.png")),
         pixie::TextureAtlasAsset::from_static("predator", include_bytes!("../assets/predator.png")),
     ];

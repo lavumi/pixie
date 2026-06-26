@@ -11,3 +11,11 @@ pub const MAX_PREDATORS: usize = 60;
 
 pub const PREY_SIZE: [f32; 2] = [0.7, 0.7];
 pub const PREDATOR_SIZE: [f32; 2] = [0.9, 0.9];
+
+pub const WORLD_BORDER_THICKNESS: f32 = 0.18;
+
+pub const PREY_MAX_ABS_SPEED: f32 = 4.5;
+pub const PREDATOR_MAX_ABS_SPEED: f32 = 3.8;
+
+pub const PREY_MAX_ABS_ANGULAR_VELOCITY: f32 = 1.6;
+pub const PREDATOR_MAX_ABS_ANGULAR_VELOCITY: f32 = 1.3;
