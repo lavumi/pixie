@@ -427,6 +427,9 @@ Input:
 
 - `Space`: pause or resume.
 - `R`: reset the simulation.
+- `Left click`: select the nearest agent under the cursor or clear selection.
+- `Left drag`: clear selection and pan the camera.
+- `Escape`: clear selection first; exit when no agent is selected.
 - `D`: reserved for future vision debug toggle.
 
 Startup:

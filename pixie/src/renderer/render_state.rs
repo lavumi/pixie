@@ -13,7 +13,7 @@ use crate::renderer::render_input_data::*;
 use crate::renderer::texture;
 use crate::renderer::vertex::DebugLineVertex;
 use crate::renderer::RenderError;
-use crate::{AtlasId, DebugLine};
+use crate::{AtlasId, DebugLine, RenderViewport};
 
 #[rustfmt::skip]
 const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -235,7 +235,7 @@ impl RenderState {
         };
 
         let aspect_ratio = width as f32 / height as f32;
-        let viewport_data = [0., 0., width as f32, height as f32, 0., 1.];
+        let viewport_data = RenderViewport::new(0.0, 0.0, width as f32, height as f32).wgpu_data();
 
         let mut gpu_resource_manager = GPUResourceManager::default();
         gpu_resource_manager.initialize(&device);
@@ -302,31 +302,18 @@ impl RenderState {
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
             self.surface.configure(&self.device, &self.config);
 
-            let aspect_ratio = new_size.width as f32 / new_size.height as f32;
-
-            if (self.aspect_ratio - aspect_ratio).abs() > 0.02 {
-                if self.aspect_ratio < aspect_ratio {
-                    //width is bigger
-                    let adjust_width = new_size.height as f32 * self.aspect_ratio;
-                    let x_offset = (new_size.width as f32 - adjust_width) * 0.5;
-
-                    self.viewport_data =
-                        [x_offset, 0., adjust_width, new_size.height as f32, 0., 1.];
-                } else {
-                    let adjust_height = new_size.width as f32 / self.aspect_ratio;
-                    self.viewport_data = [0., 0., new_size.width as f32, adjust_height, 0., 1.];
-                }
-            } else {
-                self.viewport_data = [
-                    0.,
-                    0.,
-                    new_size.width as f32,
-                    new_size.height as f32,
-                    0.,
-                    1.,
-                ];
-            }
+            self.viewport_data =
+                RenderViewport::fit(new_size.width, new_size.height, self.aspect_ratio).wgpu_data();
         }
+    }
+
+    pub fn viewport(&self) -> RenderViewport {
+        RenderViewport::new(
+            self.viewport_data[0],
+            self.viewport_data[1],
+            self.viewport_data[2],
+            self.viewport_data[3],
+        )
     }
     fn update_camera_buffer(&self, camera_uniform: [[f32; 4]; 4]) -> Result<(), RenderError> {
         self.update_named_camera_buffer("camera_matrix", camera_uniform)

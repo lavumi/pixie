@@ -11,7 +11,8 @@ use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
 use crate::resources::{
-    Camera, CameraController, ClearColor, DebugDraw, DeltaTime, ResourceContainer, WindowSize,
+    Camera, CameraController, ClearColor, DebugDraw, DeltaTime, RenderViewport, ResourceContainer,
+    WindowSize,
 };
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
@@ -157,7 +158,6 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                 });
 
                 self.wasm_pending_rs = Some(pending);
-                self.size = PhysicalSize::new(self.initial_width, self.initial_height);
             }
 
             #[cfg(not(target_arch = "wasm32"))]
@@ -183,10 +183,11 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                     return;
                 }
                 self.rs = Some(rs);
-                self.size = window.inner_size();
             }
 
+            let actual_size = window.inner_size();
             self.window = Some(window);
+            self.resize(actual_size);
         }
         if let Some(w) = &self.window {
             w.request_redraw();
@@ -258,6 +259,8 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                             self.exit_with_error(event_loop, error.into());
                                             return;
                                         }
+                                        rs.resize(self.size);
+                                        self.resources.insert(rs.viewport());
                                         self.rs = Some(rs);
                                     }
                                 }
@@ -364,6 +367,7 @@ impl<A: Application> Engine<A> {
         ));
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
+        resources.insert(RenderViewport::new(0.0, 0.0, width as f32, height as f32));
         resources.insert(DeltaTime(0.0));
         resources.insert(DebugDraw::with_capacity(256));
         resources.insert(TextureAtlasRegistry::default());
@@ -417,6 +421,7 @@ impl<A: Application> Engine<A> {
         ));
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
+        resources.insert(RenderViewport::new(0.0, 0.0, width as f32, height as f32));
         resources.insert(DeltaTime(0.0));
         resources.insert(DebugDraw::with_capacity(256));
         let mut atlas_registry = TextureAtlasRegistry::default();
@@ -467,6 +472,14 @@ impl<A: Application> Engine<A> {
             .insert(WindowSize::new(new_size.width, new_size.height));
         if let Some(rs) = &mut self.rs {
             rs.resize(new_size);
+            self.resources.insert(rs.viewport());
+        } else {
+            let target_aspect = self.initial_width as f32 / self.initial_height.max(1) as f32;
+            self.resources.insert(RenderViewport::fit(
+                new_size.width,
+                new_size.height,
+                target_aspect,
+            ));
         }
     }
 

@@ -1,4 +1,7 @@
 use cgmath::Point3;
+use cgmath::SquareMatrix;
+
+use super::RenderViewport;
 
 const MIN_ORTHOGRAPHIC_HALF_HEIGHT: f32 = 0.1;
 const MIN_PERSPECTIVE_FOV_Y: f32 = 1.0;
@@ -159,6 +162,34 @@ impl Camera {
         vp.into()
     }
 
+    pub fn screen_to_world(
+        &self,
+        screen_position: [f32; 2],
+        viewport: RenderViewport,
+    ) -> Option<[f32; 2]> {
+        if self.perspective
+            || viewport.width <= 0.0
+            || viewport.height <= 0.0
+            || !viewport.contains(screen_position)
+        {
+            return None;
+        }
+
+        let ndc = cgmath::Vector4::new(
+            (screen_position[0] - viewport.x) / viewport.width * 2.0 - 1.0,
+            1.0 - (screen_position[1] - viewport.y) / viewport.height * 2.0,
+            0.0,
+            1.0,
+        );
+        let inverse = self.build_view_projection_matrix().invert()?;
+        let world = inverse * ndc;
+        if world.w.abs() <= f32::EPSILON {
+            return None;
+        }
+
+        Some([world.x / world.w, world.y / world.w])
+    }
+
     pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         // 1.
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
@@ -197,6 +228,12 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 mod tests {
     use super::*;
 
+    fn assert_position_close(actual: Option<[f32; 2]>, expected: [f32; 2]) {
+        let actual = actual.expect("expected a world position");
+        assert!((actual[0] - expected[0]).abs() < 0.0001);
+        assert!((actual[1] - expected[1]).abs() < 0.0001);
+    }
+
     #[test]
     fn orthographic_zoom_in_reduces_visible_height() {
         let mut camera = Camera::init_orthographic(20.0, 16.0 / 9.0);
@@ -233,5 +270,33 @@ mod tests {
 
         camera.zoom_out(1_000.0);
         assert_eq!(camera.zoom(), MAX_PERSPECTIVE_FOV_Y);
+    }
+
+    #[test]
+    fn screen_to_world_uses_letterboxed_viewport() {
+        let camera = Camera::init_orthographic(10.0, 2.0);
+        let viewport = RenderViewport::new(100.0, 50.0, 800.0, 400.0);
+
+        assert_eq!(
+            camera.screen_to_world([500.0, 250.0], viewport),
+            Some([0.0, 0.0])
+        );
+        assert_eq!(
+            camera.screen_to_world([100.0, 50.0], viewport),
+            Some([-20.0, 10.0])
+        );
+        assert_eq!(camera.screen_to_world([50.0, 250.0], viewport), None);
+    }
+
+    #[test]
+    fn screen_to_world_accounts_for_camera_position() {
+        let mut camera = Camera::init_orthographic(10.0, 1.0);
+        camera.move_camera([4.0, -3.0]);
+        let viewport = RenderViewport::new(0.0, 0.0, 200.0, 200.0);
+
+        assert_position_close(
+            camera.screen_to_world([100.0, 100.0], viewport),
+            [4.0, -3.0],
+        );
     }
 }

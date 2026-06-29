@@ -43,8 +43,11 @@ impl DebugDraw {
     }
 
     pub fn line(&mut self, start: [f32; 3], end: [f32; 3], color: [f32; 4], thickness: f32) {
-        self.lines
-            .push(DebugLine::new(start, end, color, thickness));
+        self.submit(DebugLine::new(start, end, color, thickness));
+    }
+
+    pub fn submit(&mut self, line: DebugLine) {
+        self.lines.push(line);
     }
 
     pub fn lines(&self) -> &[DebugLine] {

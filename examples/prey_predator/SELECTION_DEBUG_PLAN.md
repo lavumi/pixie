@@ -62,7 +62,7 @@ Completion criteria:
 
 ### Phase 2: Coordinate Conversion and Selection
 
-Status: pending
+Status: complete
 
 - Add orthographic `Camera::screen_to_world`.
 - Account for the actual render viewport and window size.
@@ -71,24 +71,48 @@ Status: pending
 - Implement nearest candidate selection and empty-space deselection.
 - Add deterministic coordinate conversion and selection tests.
 
+Implemented interaction details:
+
+- Selection occurs on left-button release.
+- Pointer movement up to 4 physical pixels is treated as a click.
+- Larger movement remains available to the existing left-drag camera pan.
+- Clicking outside the render viewport or outside every agent clears selection.
+- The HUD shows `Selected: None`, `Selected: Prey`, or `Selected: Predator`.
+
 ### Phase 3: Camera Follow
 
-Status: pending
+Status: complete
 
 - Center the camera on the selected agent during variable updates.
 - Preserve the current zoom.
 - Clear selection when left-button camera dragging starts.
 - Clear stale selection when the selected entity no longer exists.
 
+Implemented interaction details:
+
+- Camera position follows the selected transform every variable update.
+- Camera zoom is not modified by follow.
+- Crossing the 4-pixel click threshold clears selection before pan continues.
+- `Escape` clears an active selection; a second `Escape` exits through the
+  engine's default input handling.
+
 ### Phase 4: Selected-Agent Debug Drawing
 
-Status: pending
+Status: complete
 
 - Submit a selection outline using short line segments.
 - Submit rays from the selected agent's current `VisionOutput`.
 - Use gray, green, and red hit-state colors.
 - Stop hit rays at their recorded intersection distance.
 - Submit no agent debug primitives when selection is empty.
+
+Implemented visual details:
+
+- Selection outline: yellow 24-segment circle.
+- Missed ray: gray and drawn to maximum vision distance.
+- Prey hit: green and drawn to the recorded intersection.
+- Predator hit: red and drawn to the recorded intersection.
+- Debug geometry is resubmitted only for the selected agent each frame.
 
 ### Phase 5: Manual Verification
 

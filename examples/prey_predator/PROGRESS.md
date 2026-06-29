@@ -79,6 +79,29 @@
 - Added `SELECTION_DEBUG_PLAN.md` for selection, camera follow, deselection, and
   selected-agent vision visualization.
 
+### Agent Selection
+
+- Added engine-managed `RenderViewport` data shared by rendering and input.
+- Added orthographic `Camera::screen_to_world` with letterbox handling.
+- Added `SelectionState` to track cursor, click state, and selected entity.
+- Left click selects the nearest agent center under the cursor.
+- Empty-space and out-of-viewport clicks clear selection.
+- Click detection coexists with the existing left-drag camera pan.
+- The HUD displays the selected species alongside the visual outline.
+
+### Selection Follow and Vision Debug
+
+- The camera follows the selected agent while preserving zoom.
+- Starting a left-button drag clears selection and resumes manual pan.
+- `Escape` clears selection before falling through to engine exit behavior.
+- Despawned selections are cleared automatically.
+- A yellow circular outline marks the selected agent.
+- Only the selected agent submits vision rays:
+  - gray for no hit
+  - green for prey
+  - red for predator
+- Hit rays stop at the recorded ray-circle intersection distance.
+
 ## Verified
 
 The latest implementation was verified with:
@@ -86,7 +109,7 @@ The latest implementation was verified with:
 ```bash
 cargo check --workspace
 cargo test --workspace
-cargo clippy --all-targets
+cargo clippy --all-targets -- -D warnings
 ```
 
 All passed.
@@ -113,5 +136,3 @@ encoding, and the V1 non-wrapped boundary.
    - prey reproduces after survival time
    - predator reproduces after food count
    - predator starvation
-4. Add debug visualization for selected agent vision only, not every agent by
-   default.
