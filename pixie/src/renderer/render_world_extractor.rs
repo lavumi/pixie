@@ -6,7 +6,7 @@ use hecs::World;
 use crate::components::{Sprite, Text, TextCoordinateSpace, TextStyle, Transform};
 use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
-use crate::{AtlasError, AtlasId, TextureAtlasRegistry};
+use crate::{AtlasError, AtlasId, DebugDraw, DebugLine, TextureAtlasRegistry};
 
 #[derive(Default)]
 pub struct RenderWorldExtractor {
@@ -15,6 +15,7 @@ pub struct RenderWorldExtractor {
     active_sprite_atlases: HashSet<AtlasId>,
     world_text_render_buffer: Vec<TextRenderData>,
     screen_text_render_buffer: Vec<TextRenderData>,
+    debug_lines: Vec<DebugLine>,
 }
 
 impl RenderWorldExtractor {
@@ -25,6 +26,7 @@ impl RenderWorldExtractor {
             active_sprite_atlases: HashSet::with_capacity(sprite_atlas_count),
             world_text_render_buffer: Vec::with_capacity(text_count),
             screen_text_render_buffer: Vec::with_capacity(text_count),
+            debug_lines: Vec::with_capacity(256),
         }
     }
 
@@ -40,6 +42,7 @@ impl RenderWorldExtractor {
 
         self.extract_sprites(world, resources)?;
         self.extract_texts(world);
+        self.extract_debug_lines(resources);
 
         Ok(RenderFrame::new(
             camera_uniform,
@@ -47,6 +50,7 @@ impl RenderWorldExtractor {
             &self.sprite_atlases,
             &self.world_text_render_buffer,
             &self.screen_text_render_buffer,
+            &self.debug_lines,
         ))
     }
 
@@ -111,6 +115,13 @@ impl RenderWorldExtractor {
                 size: style.size,
                 color: style.color,
             });
+        }
+    }
+
+    fn extract_debug_lines(&mut self, resources: &ResourceContainer) {
+        self.debug_lines.clear();
+        if let Some(debug_draw) = resources.get::<DebugDraw>() {
+            self.debug_lines.extend_from_slice(debug_draw.lines());
         }
     }
 }
@@ -286,10 +297,38 @@ mod tests {
         assert_eq!(frame.sprite_atlases().count(), 0);
         assert!(frame.world_texts().is_empty());
         assert!(frame.screen_texts().is_empty());
+        assert!(frame.debug_lines().is_empty());
         assert_eq!(
             frame.camera_uniform(),
             resources.get::<Camera>().unwrap().get_view_proj()
         );
+    }
+
+    #[test]
+    fn extracts_debug_lines_without_retaining_cleared_submissions() {
+        let world = World::new();
+        let mut resources = resources_with_camera();
+        let mut debug_draw = DebugDraw::default();
+        debug_draw.line([1.0, 2.0, 0.5], [3.0, 4.0, 0.5], [0.1, 0.2, 0.3, 0.4], 0.25);
+        resources.insert(debug_draw);
+        let mut extractor = RenderWorldExtractor::default();
+
+        {
+            let frame = extractor.extract(&world, &resources).unwrap();
+            assert_eq!(
+                frame.debug_lines(),
+                &[DebugLine::new(
+                    [1.0, 2.0, 0.5],
+                    [3.0, 4.0, 0.5],
+                    [0.1, 0.2, 0.3, 0.4],
+                    0.25,
+                )]
+            );
+        }
+
+        resources.get_mut::<DebugDraw>().unwrap().clear();
+        let frame = extractor.extract(&world, &resources).unwrap();
+        assert!(frame.debug_lines().is_empty());
     }
 
     #[test]

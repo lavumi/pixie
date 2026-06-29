@@ -1,5 +1,5 @@
 use crate::renderer::mesh::SpriteInstanceRaw;
-use crate::AtlasId;
+use crate::{AtlasId, DebugLine};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -24,6 +24,7 @@ pub struct RenderFrame<'a> {
     sprite_atlases: &'a [AtlasId],
     world_texts: &'a [TextRenderData],
     screen_texts: &'a [TextRenderData],
+    debug_lines: &'a [DebugLine],
 }
 
 impl<'a> RenderFrame<'a> {
@@ -33,6 +34,7 @@ impl<'a> RenderFrame<'a> {
         sprite_atlases: &'a [AtlasId],
         world_texts: &'a [TextRenderData],
         screen_texts: &'a [TextRenderData],
+        debug_lines: &'a [DebugLine],
     ) -> Self {
         Self {
             camera_uniform,
@@ -40,6 +42,7 @@ impl<'a> RenderFrame<'a> {
             sprite_atlases,
             world_texts,
             screen_texts,
+            debug_lines,
         }
     }
 
@@ -65,6 +68,10 @@ impl<'a> RenderFrame<'a> {
 
     pub fn screen_texts(&self) -> &[TextRenderData] {
         self.screen_texts
+    }
+
+    pub fn debug_lines(&self) -> &[DebugLine] {
+        self.debug_lines
     }
 }
 

@@ -11,8 +11,9 @@ use crate::renderer::mesh::SpriteInstanceRaw;
 use crate::renderer::pipeline_manager::PipelineManager;
 use crate::renderer::render_input_data::*;
 use crate::renderer::texture;
+use crate::renderer::vertex::DebugLineVertex;
 use crate::renderer::RenderError;
-use crate::AtlasId;
+use crate::{AtlasId, DebugLine};
 
 #[rustfmt::skip]
 const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -36,6 +37,102 @@ impl SpriteInstanceBuffers {
     }
 }
 
+#[derive(Default)]
+struct DebugLineBuffers {
+    vertices: Vec<DebugLineVertex>,
+    vertex_buffer: Option<wgpu::Buffer>,
+    vertex_capacity: usize,
+    vertex_count: u32,
+}
+
+impl DebugLineBuffers {
+    fn update(&mut self, lines: &[DebugLine], device: &wgpu::Device, queue: &wgpu::Queue) {
+        self.vertices.clear();
+        for line in lines {
+            append_debug_line_vertices(&mut self.vertices, line);
+        }
+        self.vertex_count = self.vertices.len() as u32;
+
+        if self.vertices.is_empty() {
+            return;
+        }
+
+        if self.vertices.len() > self.vertex_capacity {
+            self.vertex_capacity = self.vertices.len().next_power_of_two().max(384);
+            self.vertex_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Debug Line Vertex Buffer"),
+                size: (self.vertex_capacity * std::mem::size_of::<DebugLineVertex>())
+                    as wgpu::BufferAddress,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+
+        queue.write_buffer(
+            self.vertex_buffer
+                .as_ref()
+                .expect("debug line vertex buffer must be allocated"),
+            0,
+            bytemuck::cast_slice(&self.vertices),
+        );
+    }
+}
+
+fn append_debug_line_vertices(vertices: &mut Vec<DebugLineVertex>, line: &DebugLine) {
+    let delta = [line.end[0] - line.start[0], line.end[1] - line.start[1]];
+    let length = delta[0].hypot(delta[1]);
+    if length <= f32::EPSILON {
+        return;
+    }
+
+    let half_thickness = line.thickness * 0.5;
+    let normal = [
+        -delta[1] / length * half_thickness,
+        delta[0] / length * half_thickness,
+    ];
+    let start_left = DebugLineVertex {
+        position: [
+            line.start[0] + normal[0],
+            line.start[1] + normal[1],
+            line.start[2],
+        ],
+        color: line.color,
+    };
+    let start_right = DebugLineVertex {
+        position: [
+            line.start[0] - normal[0],
+            line.start[1] - normal[1],
+            line.start[2],
+        ],
+        color: line.color,
+    };
+    let end_left = DebugLineVertex {
+        position: [
+            line.end[0] + normal[0],
+            line.end[1] + normal[1],
+            line.end[2],
+        ],
+        color: line.color,
+    };
+    let end_right = DebugLineVertex {
+        position: [
+            line.end[0] - normal[0],
+            line.end[1] - normal[1],
+            line.end[2],
+        ],
+        color: line.color,
+    };
+
+    vertices.extend_from_slice(&[
+        start_left,
+        start_right,
+        end_left,
+        end_left,
+        start_right,
+        end_right,
+    ]);
+}
+
 pub struct RenderState {
     pub device: wgpu::Device,
     surface: wgpu::Surface<'static>,
@@ -48,6 +145,7 @@ pub struct RenderState {
 
     font_manager: FontManager,
     sprite_instance_buffers: SpriteInstanceBuffers,
+    debug_line_buffers: DebugLineBuffers,
 
     color: wgpu::Color,
     depth_texture: texture::Texture,
@@ -159,6 +257,7 @@ impl RenderState {
             viewport_data,
             font_manager,
             sprite_instance_buffers: SpriteInstanceBuffers::default(),
+            debug_line_buffers: DebugLineBuffers::default(),
         })
     }
 
@@ -270,6 +369,8 @@ impl RenderState {
         self.update_camera_buffer(frame.camera_uniform())?;
         self.update_ui_camera_buffer()?;
         self.update_sprite_instances(frame)?;
+        self.debug_line_buffers
+            .update(frame.debug_lines(), &self.device, &self.queue);
         self.update_text_instance("world_text", frame.world_texts());
         self.update_screen_text_instance(frame.screen_texts());
         Ok(())
@@ -372,6 +473,22 @@ impl RenderState {
             self.gpu_resource_manager
                 .render(&mut render_pass, frame.sprite_atlases())?;
 
+            if self.debug_line_buffers.vertex_count > 0 {
+                let render_pipeline = self.pipeline_manager.get_pipeline("debug_line_pl");
+                render_pass.set_pipeline(render_pipeline);
+                self.gpu_resource_manager
+                    .set_bind_group(&mut render_pass, "camera");
+                render_pass.set_vertex_buffer(
+                    0,
+                    self.debug_line_buffers
+                        .vertex_buffer
+                        .as_ref()
+                        .expect("debug line vertex buffer must be allocated")
+                        .slice(..),
+                );
+                render_pass.draw(0..self.debug_line_buffers.vertex_count, 0..1);
+            }
+
             let render_pipeline = self.pipeline_manager.get_pipeline("font_pl");
             render_pass.set_pipeline(render_pipeline);
             self.gpu_resource_manager
@@ -421,5 +538,30 @@ mod tests {
 
         assert_eq!(buffers.by_atlas[&atlas].len(), 2);
         assert_eq!(buffers.by_atlas[&atlas].capacity(), capacity);
+    }
+
+    #[test]
+    fn horizontal_debug_line_expands_to_two_triangles() {
+        let line = DebugLine::new([0.0, 0.0, 0.5], [2.0, 0.0, 0.5], [1.0, 0.0, 0.0, 0.75], 0.2);
+        let mut vertices = Vec::new();
+
+        append_debug_line_vertices(&mut vertices, &line);
+
+        assert_eq!(vertices.len(), 6);
+        assert_eq!(vertices[0].position, [0.0, 0.1, 0.5]);
+        assert_eq!(vertices[1].position, [0.0, -0.1, 0.5]);
+        assert_eq!(vertices[2].position, [2.0, 0.1, 0.5]);
+        assert_eq!(vertices[5].position, [2.0, -0.1, 0.5]);
+        assert!(vertices.iter().all(|vertex| vertex.color == line.color));
+    }
+
+    #[test]
+    fn zero_length_debug_line_produces_no_geometry() {
+        let line = DebugLine::new([1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0], 0.1);
+        let mut vertices = Vec::new();
+
+        append_debug_line_vertices(&mut vertices, &line);
+
+        assert!(vertices.is_empty());
     }
 }

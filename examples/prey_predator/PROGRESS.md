@@ -46,6 +46,17 @@
 - Movement runs in `fixed_update`.
 - Agents wrap around the configured torus world bounds.
 
+### Vision
+
+- Added species-specific `Vision` distance, field-of-view, and ray interval.
+- Vision runs before movement in each fixed update.
+- Rays use circle intersections against snapshotted agent bounds.
+- Each ray keeps only its nearest target and excludes the viewer itself.
+- `VisionOutput` preserves the target entity, species, and surface distance.
+- Neural-network input per ray is `[normalized_distance, prey, predator]`.
+- The no-target input is `[1.0, 0.0, 0.0]`.
+- V1 vision does not detect across the torus boundary.
+
 ### Camera
 
 - Added an engine-level `CameraController` resource.
@@ -56,6 +67,17 @@
   converted into world-space camera movement.
 - Removed camera zoom and pan input handling from the prey/predator app. The
   example now relies on the engine's default camera controller.
+
+### Debug Rendering Foundation
+
+- Added the engine-level `DebugDraw` transient resource.
+- Added world-space debug lines with RGBA color and world-space thickness.
+- Added a dedicated shader, pipeline, and reusable dynamic vertex buffer.
+- Debug lines are expanded into triangles for consistent thickness across
+  native and WebGL targets.
+- Debug submissions are cleared after each render attempt.
+- Added `SELECTION_DEBUG_PLAN.md` for selection, camera follow, deselection, and
+  selected-agent vision visualization.
 
 ## Verified
 
@@ -69,26 +91,27 @@ cargo clippy --all-targets
 
 All passed.
 
+Vision also has deterministic tests for ray counts, ray-circle detection,
+distance and angle exclusion, nearest-target selection, self exclusion, species
+encoding, and the V1 non-wrapped boundary.
+
 ## Known Gaps
 
 - The current movement is still random wandering, not brain-driven behavior.
-- No vision/raycast-style perception has been implemented yet.
 - No prey reproduction rule has been implemented yet.
 - No predator eating, starvation, or reproduction rule has been implemented yet.
-- No deterministic unit tests exist for prey/predator simulation logic yet.
 - Camera controls are engine-level now, but there is not yet a public preset API
   beyond mutating the `CameraController` resource directly.
 
 ## Suggested Next Steps
 
-1. Add vision parameter components and deterministic vision-query tests.
-2. Add a placeholder brain interface returning `[rotation_delta, speed]`.
-3. Replace random angular velocity with brain output while keeping clamps in
+1. Add a placeholder brain interface returning `[rotation_delta, speed]`.
+2. Replace random angular velocity with brain output while keeping clamps in
    `AgentMotion`.
-4. Implement prey/predator interaction rules:
+3. Implement prey/predator interaction rules:
    - predator eats prey on contact
    - prey reproduces after survival time
    - predator reproduces after food count
    - predator starvation
-5. Add debug visualization for selected agent vision only, not every agent by
+4. Add debug visualization for selected agent vision only, not every agent by
    default.

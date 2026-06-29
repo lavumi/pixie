@@ -11,7 +11,7 @@ use crate::application::Application;
 use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
 use crate::resources::{
-    Camera, CameraController, ClearColor, DeltaTime, ResourceContainer, WindowSize,
+    Camera, CameraController, ClearColor, DebugDraw, DeltaTime, ResourceContainer, WindowSize,
 };
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
@@ -365,6 +365,7 @@ impl<A: Application> Engine<A> {
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
         resources.insert(DeltaTime(0.0));
+        resources.insert(DebugDraw::with_capacity(256));
         resources.insert(TextureAtlasRegistry::default());
 
         // Initialize application (can adjust camera via resources)
@@ -417,6 +418,7 @@ impl<A: Application> Engine<A> {
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
         resources.insert(DeltaTime(0.0));
+        resources.insert(DebugDraw::with_capacity(256));
         let mut atlas_registry = TextureAtlasRegistry::default();
         for asset in texture_atlases {
             atlas_registry.register(asset)?;
@@ -516,15 +518,23 @@ impl<A: Application> Engine<A> {
     }
 
     fn render(&mut self) -> Result<(), RenderError> {
-        let rs = match &mut self.rs {
-            Some(rs) => rs,
-            None => return Ok(()),
-        };
-        Self::upload_pending_atlases(&mut self.resources, rs)?;
-        Self::apply_clear_color(&self.resources, rs);
-        let frame = self
-            .render_extractor
-            .extract(&self.world, &self.resources)?;
-        rs.render_frame(&frame)
+        let result = (|| {
+            let rs = match &mut self.rs {
+                Some(rs) => rs,
+                None => return Ok(()),
+            };
+            Self::upload_pending_atlases(&mut self.resources, rs)?;
+            Self::apply_clear_color(&self.resources, rs);
+            let frame = self
+                .render_extractor
+                .extract(&self.world, &self.resources)?;
+            rs.render_frame(&frame)
+        })();
+
+        self.resources
+            .get_mut::<DebugDraw>()
+            .expect("DebugDraw resource not found")
+            .clear();
+        result
     }
 }

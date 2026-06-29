@@ -5,7 +5,7 @@ use wgpu::{Device, Face, ShaderModule, TextureFormat, VertexBufferLayout};
 
 use crate::renderer::mesh::{ColorSpriteInstanceRaw, SpriteInstanceRaw};
 use crate::renderer::texture::Texture;
-use crate::renderer::vertex::Vertex;
+use crate::renderer::vertex::{DebugLineVertex, Vertex};
 
 #[derive(Debug, Hash, Clone)]
 struct PipelineDesc<'a> {
@@ -138,6 +138,30 @@ impl PipelineManager {
         .build(shader, device, default_format, gpu_resource_manager);
         self.pipelines
             .insert("sprite_pl".to_string(), render_pipeline);
+
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/debug_line.wgsl"));
+        let render_pipeline = PipelineDesc {
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Texture::DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            buffers: &[DebugLineVertex::desc()],
+            sample_count: 1,
+            sampler_mask: 0,
+            alpha_to_coverage_enabled: false,
+            layouts: vec!["camera_bind_group_layout".to_string()],
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            label: "Debug Line Render Pipeline".to_string(),
+        }
+        .build(shader, device, default_format, gpu_resource_manager);
+        self.pipelines
+            .insert("debug_line_pl".to_string(), render_pipeline);
 
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/font.wgsl"));
