@@ -302,6 +302,7 @@ Lifecycle:
 | Predator max age | `80.0 s` |
 | Predator starvation time | `12.0 s` |
 | Predation radius | `0.6` |
+| Offspring spawn offset | `0.8` |
 
 ## ECS Design
 
@@ -315,8 +316,6 @@ pub enum Species {
 
 pub struct Agent {
     pub species: Species,
-    pub max_speed: f32,
-    pub max_turn_speed: f32,
 }
 
 pub struct Vision {
@@ -340,15 +339,12 @@ pub enum BrainKind {
 
 pub struct LifeCycle {
     pub age: f32,
-    pub max_age: f32,
     pub time_since_food: f32,
     pub food_eaten: u32,
 }
 
 pub struct Reproduction {
     pub cooldown_remaining: f32,
-    pub required_age: f32,
-    pub required_food: u32,
 }
 ```
 
@@ -375,6 +371,15 @@ pub struct SimulationConfig {
     pub initial_predators: usize,
     pub max_prey: usize,
     pub max_predators: usize,
+    pub prey_reproduction_age: f32,
+    pub prey_reproduction_cooldown: f32,
+    pub prey_max_age: f32,
+    pub predator_food_to_reproduce: u32,
+    pub predator_reproduction_cooldown: f32,
+    pub predator_max_age: f32,
+    pub predator_starvation_time: f32,
+    pub predation_radius: f32,
+    pub offspring_spawn_offset: f32,
 }
 
 pub struct SimulationStats {
@@ -400,15 +405,14 @@ The config should start as code constants. Runtime editing can be added later.
 The fixed update should run simulation systems in this order:
 
 1. `collect_vision`
-2. `process_brains`
-3. `move_agents`
-4. `wrap_world`
-5. `process_predation`
-6. `update_lifecycle`
-7. `process_reproduction`
+2. `process_brains` (future)
+3. `move_agents` and `wrap_world`
+4. `process_predation`
+5. `update_lifecycles`
+6. `process_reproduction`
+7. `cleanup_dead_agents`
 8. `spawn_queued_agents`
-9. `cleanup_dead_agents`
-10. `update_stats`
+9. `update_stats` during variable update
 
 HUD can update in `Application::update`, because it only needs to reflect the
 latest simulation state.
@@ -419,7 +423,9 @@ Reasoning:
   frame's positions.
 - Movement should happen before predation.
 - Predation should mark prey as dead before reproduction is processed.
-- Spawns and despawns should happen after systems finish collecting decisions.
+- Despawns and spawns happen only after systems finish collecting decisions.
+- Death cleanup runs before spawn application so selected dead entities and
+  population slots are resolved before children enter the world.
 
 ## Application Behavior
 

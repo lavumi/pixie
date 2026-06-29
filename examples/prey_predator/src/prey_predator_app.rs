@@ -9,9 +9,14 @@ use pixie::{
     TextCoordinateSpace, TextStyle, Transform,
 };
 
-use crate::components::{Agent, AgentMotion, Species, Vision, VisionOutput};
+use crate::components::{
+    Agent, AgentMotion, LifeCycle, Reproduction, Species, Vision, VisionOutput,
+};
 use crate::config;
-use crate::resources::{SelectionState, SimulationConfig, SimulationStats};
+use crate::resources::{
+    DeathQueue, DeathReason, SelectionState, SimulationConfig, SimulationStats, SpawnQueue,
+};
+use crate::system::lifecycle::{process_predation, process_reproduction, update_lifecycles};
 use crate::system::vision::collect_vision;
 
 const DEBUG_RAY_THICKNESS: f32 = 0.04;
@@ -45,16 +50,11 @@ impl Application for PreyPredatorApp {
             camera.set_zoom(24.0);
         }
 
-        resources.insert(SimulationConfig {
-            world_width: config::WORLD_WIDTH,
-            world_height: config::WORLD_HEIGHT,
-            initial_prey: config::INITIAL_PREY,
-            initial_predators: config::INITIAL_PREDATORS,
-            max_prey: config::MAX_PREY,
-            max_predators: config::MAX_PREDATORS,
-        });
+        resources.insert(SimulationConfig::default());
         resources.insert(SimulationStats::default());
         resources.insert(SelectionState::default());
+        resources.insert(DeathQueue::default());
+        resources.insert(SpawnQueue::default());
 
         self.create_world_area(world);
         self.create_hud(world);
@@ -78,6 +78,23 @@ impl Application for PreyPredatorApp {
     ) {
         collect_vision(world);
         self.update_agent_motion(world, resources, fixed_dt);
+
+        let Some(simulation_config) = resources.get::<SimulationConfig>().cloned() else {
+            return;
+        };
+        let mut deaths = resources.remove::<DeathQueue>().unwrap_or_default();
+        let mut spawns = resources.remove::<SpawnQueue>().unwrap_or_default();
+        deaths.requests.clear();
+        spawns.requests.clear();
+
+        process_predation(world, &simulation_config, &mut deaths);
+        update_lifecycles(world, &simulation_config, fixed_dt, &mut deaths);
+        process_reproduction(world, &simulation_config, &deaths, &mut spawns);
+        self.cleanup_dead_agents(world, resources, &mut deaths);
+        self.spawn_queued_agents(world, resources, &simulation_config, &mut spawns);
+
+        resources.insert(deaths);
+        resources.insert(spawns);
     }
 
     fn handle_input(
@@ -218,6 +235,16 @@ impl PreyPredatorApp {
         let half_height = config.world_height * 0.5;
         let x = self.rng.gen_range(-half_width..half_width);
         let y = self.rng.gen_range(-half_height..half_height);
+        self.spawn_agent_at(world, species, [x, y], 0.0);
+    }
+
+    fn spawn_agent_at(
+        &mut self,
+        world: &mut World,
+        species: Species,
+        position: [f32; 2],
+        reproduction_cooldown: f32,
+    ) {
         let rotation = self.rng.gen_range(0.0..std::f32::consts::TAU);
 
         let (atlas, size, z, max_abs_speed, max_abs_angular_velocity, vision) = match species {
@@ -252,7 +279,7 @@ impl PreyPredatorApp {
             .gen_range(-max_abs_angular_velocity..max_abs_angular_velocity);
 
         world.spawn((
-            Transform::with_rotation([x, y, z], size, rotation),
+            Transform::with_rotation([position[0], position[1], z], size, rotation),
             Sprite {
                 uv: [0.0, 1.0, 0.0, 1.0],
                 atlas: atlas.into(),
@@ -266,6 +293,8 @@ impl PreyPredatorApp {
             ),
             vision,
             VisionOutput::empty(&vision),
+            LifeCycle::default(),
+            Reproduction::new(reproduction_cooldown),
         ));
     }
 
@@ -291,6 +320,8 @@ impl PreyPredatorApp {
         }
 
         resources.insert(SimulationStats::default());
+        resources.insert(DeathQueue::default());
+        resources.insert(SpawnQueue::default());
         if let Some(selection) = resources.get_mut::<SelectionState>() {
             selection.clear();
         }
@@ -366,6 +397,67 @@ impl PreyPredatorApp {
         }
     }
 
+    fn cleanup_dead_agents(
+        &self,
+        world: &mut World,
+        resources: &mut ResourceContainer,
+        deaths: &mut DeathQueue,
+    ) {
+        for request in deaths.requests.drain(..) {
+            if world.despawn(request.entity).is_err() {
+                continue;
+            }
+
+            if let Some(selection) = resources.get_mut::<SelectionState>() {
+                if selection.selected == Some(request.entity) {
+                    selection.clear();
+                }
+            }
+            if let Some(stats) = resources.get_mut::<SimulationStats>() {
+                match (request.species, request.reason) {
+                    (Species::Prey, DeathReason::Eaten) => stats.prey_eaten += 1,
+                    (Species::Prey, DeathReason::Age) => stats.prey_died_of_age += 1,
+                    (Species::Predator, DeathReason::Age | DeathReason::Starvation) => {
+                        stats.predators_died += 1;
+                    }
+                    (Species::Prey, DeathReason::Starvation)
+                    | (Species::Predator, DeathReason::Eaten) => {}
+                }
+            }
+        }
+    }
+
+    fn spawn_queued_agents(
+        &mut self,
+        world: &mut World,
+        resources: &mut ResourceContainer,
+        config: &SimulationConfig,
+        spawns: &mut SpawnQueue,
+    ) {
+        for request in spawns.requests.drain(..) {
+            let angle = self.rng.gen_range(0.0..std::f32::consts::TAU);
+            let distance = self.rng.gen_range(0.0..config.offspring_spawn_offset);
+            let mut position = [
+                request.parent_position[0] + angle.cos() * distance,
+                request.parent_position[1] + angle.sin() * distance,
+                0.0,
+            ];
+            Self::wrap_position(&mut position, config.world_width, config.world_height);
+            let cooldown = match request.species {
+                Species::Prey => config.prey_reproduction_cooldown,
+                Species::Predator => config.predator_reproduction_cooldown,
+            };
+            self.spawn_agent_at(world, request.species, [position[0], position[1]], cooldown);
+
+            if let Some(stats) = resources.get_mut::<SimulationStats>() {
+                match request.species {
+                    Species::Prey => stats.prey_born += 1,
+                    Species::Predator => stats.predators_born += 1,
+                }
+            }
+        }
+    }
+
     fn update_hud(&self, world: &mut World, resources: &ResourceContainer) {
         let Some(entity) = self.hud_text_entity else {
             return;
@@ -396,13 +488,18 @@ impl PreyPredatorApp {
         if let Ok(mut text) = world.get::<&mut Text>(entity) {
             let status = if self.paused { "Paused" } else { "Running" };
             text.content = format!(
-                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nZoom: {:.1}\nSelected: {selected}\nPrey: {} of {}\nPredators: {} of {}\n\nSpace Pause R Reset\nMouse Wheel Zoom\nLeft Click Select\nLeft Drag Pan",
+                "Prey Predator Simulation\n\nStatus: {status}\nTime: {:.1}\nZoom: {:.1}\nSelected: {selected}\nPrey: {} of {}\nPredators: {} of {}\nBorn: P {} Pred {}\nEaten: {}\nDeaths: P {} Pred {}\n\nSpace Pause R Reset\nMouse Wheel Zoom\nLeft Click Select\nLeft Drag Pan",
                 stats.elapsed_time,
                 zoom,
                 stats.prey_alive,
                 config.max_prey,
                 stats.predators_alive,
                 config.max_predators,
+                stats.prey_born,
+                stats.predators_born,
+                stats.prey_eaten,
+                stats.prey_died_of_age,
+                stats.predators_died,
             );
         }
     }
@@ -563,6 +660,7 @@ impl PreyPredatorApp {
 mod tests {
     use super::*;
     use crate::components::VisionHit;
+    use crate::resources::{DeathRequest, SpawnRequest};
 
     fn spawn_agent(world: &mut World, position: [f32; 2], size: f32) -> Entity {
         world.spawn((
@@ -668,5 +766,74 @@ mod tests {
         assert!(lines[0].end[0].abs() < 0.0001);
         assert!((lines[0].end[1] - 6.0).abs() < 0.0001);
         assert_eq!(lines[0].color, DEBUG_RAY_MISS_COLOR);
+    }
+
+    #[test]
+    fn cleanup_applies_death_stats_and_clears_selection() {
+        let app = PreyPredatorApp::default();
+        let mut world = World::new();
+        let prey = spawn_agent(&mut world, [0.0, 0.0], 1.0);
+        let predator = world.spawn((
+            Transform::default(),
+            Agent {
+                species: Species::Predator,
+            },
+        ));
+        let mut resources = ResourceContainer::new();
+        resources.insert(SimulationStats::default());
+        resources.insert(SelectionState::with_selected(prey));
+        let mut deaths = DeathQueue {
+            requests: vec![
+                DeathRequest {
+                    entity: prey,
+                    species: Species::Prey,
+                    reason: DeathReason::Eaten,
+                },
+                DeathRequest {
+                    entity: predator,
+                    species: Species::Predator,
+                    reason: DeathReason::Starvation,
+                },
+            ],
+        };
+
+        app.cleanup_dead_agents(&mut world, &mut resources, &mut deaths);
+
+        assert!(!world.contains(prey));
+        assert!(!world.contains(predator));
+        assert_eq!(resources.get::<SelectionState>().unwrap().selected, None);
+        let stats = resources.get::<SimulationStats>().unwrap();
+        assert_eq!(stats.prey_eaten, 1);
+        assert_eq!(stats.predators_died, 1);
+    }
+
+    #[test]
+    fn queued_child_starts_with_species_cooldown_and_updates_stats() {
+        let mut app = PreyPredatorApp::default();
+        let mut world = World::new();
+        let mut resources = ResourceContainer::new();
+        resources.insert(SimulationStats::default());
+        let config = SimulationConfig {
+            offspring_spawn_offset: 0.1,
+            ..SimulationConfig::default()
+        };
+        let mut spawns = SpawnQueue {
+            requests: vec![SpawnRequest {
+                species: Species::Prey,
+                parent_position: [2.0, 3.0],
+            }],
+        };
+
+        app.spawn_queued_agents(&mut world, &mut resources, &config, &mut spawns);
+
+        let mut query = world.query::<(&LifeCycle, &Reproduction)>();
+        let (_, (lifecycle, reproduction)) = query.iter().next().unwrap();
+        assert_eq!(*lifecycle, LifeCycle::default());
+        assert_eq!(
+            reproduction.cooldown_remaining,
+            config.prey_reproduction_cooldown
+        );
+        assert_eq!(resources.get::<SimulationStats>().unwrap().prey_born, 1);
+        assert!(spawns.requests.is_empty());
     }
 }

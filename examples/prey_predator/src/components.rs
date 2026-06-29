@@ -37,6 +37,36 @@ impl AgentMotion {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LifeCycle {
+    pub age: f32,
+    pub time_since_food: f32,
+    pub food_eaten: u32,
+}
+
+impl Default for LifeCycle {
+    fn default() -> Self {
+        Self {
+            age: 0.0,
+            time_since_food: 0.0,
+            food_eaten: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Reproduction {
+    pub cooldown_remaining: f32,
+}
+
+impl Reproduction {
+    pub fn new(cooldown_remaining: f32) -> Self {
+        Self {
+            cooldown_remaining: cooldown_remaining.max(0.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vision {
     pub max_distance: f32,
     pub total_angle: f32,

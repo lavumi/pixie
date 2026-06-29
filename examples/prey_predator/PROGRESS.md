@@ -102,6 +102,25 @@
   - red for predator
 - Hit rays stop at the recorded ray-circle intersection distance.
 
+### Lifecycle, Predation, and Reproduction
+
+- Added `LifeCycle` state for age, food timer, and food count.
+- Added per-agent reproduction cooldown state.
+- Added queue-based spawn and death decisions.
+- Prey:
+  - reproduce after the configured survival age and cooldown
+  - die at the configured maximum age
+- Predators:
+  - eat the nearest prey inside the configured predation radius
+  - reset starvation time and gain food when eating
+  - consume the configured food count when reproducing
+  - die from maximum age or starvation
+- Predation uses the shortest torus distance at world boundaries.
+- Species population caps include queued births and pending deaths.
+- Children spawn near parents with configured random offset and active
+  reproduction cooldown.
+- HUD now reports births, prey eaten, prey age deaths, and predator deaths.
+
 ## Verified
 
 The latest implementation was verified with:
@@ -121,8 +140,6 @@ encoding, and the V1 non-wrapped boundary.
 ## Known Gaps
 
 - The current movement is still random wandering, not brain-driven behavior.
-- No prey reproduction rule has been implemented yet.
-- No predator eating, starvation, or reproduction rule has been implemented yet.
 - Camera controls are engine-level now, but there is not yet a public preset API
   beyond mutating the `CameraController` resource directly.
 
@@ -131,8 +148,3 @@ encoding, and the V1 non-wrapped boundary.
 1. Add a placeholder brain interface returning `[rotation_delta, speed]`.
 2. Replace random angular velocity with brain output while keeping clamps in
    `AgentMotion`.
-3. Implement prey/predator interaction rules:
-   - predator eats prey on contact
-   - prey reproduces after survival time
-   - predator reproduces after food count
-   - predator starvation

@@ -1,6 +1,7 @@
 pub use pixie::dispatcher::UnifiedDispatcher;
 use pixie::systems::*;
 
+pub mod lifecycle;
 pub mod vision;
 
 pixie::construct_dispatcher!(update_camera);

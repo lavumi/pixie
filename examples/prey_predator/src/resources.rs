@@ -1,5 +1,8 @@
 use hecs::Entity;
 
+use crate::components::Species;
+use crate::config;
+
 #[derive(Debug, Clone)]
 pub struct SimulationConfig {
     pub world_width: f32,
@@ -8,6 +11,37 @@ pub struct SimulationConfig {
     pub initial_predators: usize,
     pub max_prey: usize,
     pub max_predators: usize,
+    pub prey_reproduction_age: f32,
+    pub prey_reproduction_cooldown: f32,
+    pub prey_max_age: f32,
+    pub predator_food_to_reproduce: u32,
+    pub predator_reproduction_cooldown: f32,
+    pub predator_max_age: f32,
+    pub predator_starvation_time: f32,
+    pub predation_radius: f32,
+    pub offspring_spawn_offset: f32,
+}
+
+impl Default for SimulationConfig {
+    fn default() -> Self {
+        Self {
+            world_width: config::WORLD_WIDTH,
+            world_height: config::WORLD_HEIGHT,
+            initial_prey: config::INITIAL_PREY,
+            initial_predators: config::INITIAL_PREDATORS,
+            max_prey: config::MAX_PREY,
+            max_predators: config::MAX_PREDATORS,
+            prey_reproduction_age: config::PREY_REPRODUCTION_AGE,
+            prey_reproduction_cooldown: config::PREY_REPRODUCTION_COOLDOWN,
+            prey_max_age: config::PREY_MAX_AGE,
+            predator_food_to_reproduce: config::PREDATOR_FOOD_TO_REPRODUCE,
+            predator_reproduction_cooldown: config::PREDATOR_REPRODUCTION_COOLDOWN,
+            predator_max_age: config::PREDATOR_MAX_AGE,
+            predator_starvation_time: config::PREDATOR_STARVATION_TIME,
+            predation_radius: config::PREDATION_RADIUS,
+            offspring_spawn_offset: config::OFFSPRING_SPAWN_OFFSET,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -15,6 +49,53 @@ pub struct SimulationStats {
     pub elapsed_time: f32,
     pub prey_alive: usize,
     pub predators_alive: usize,
+    pub prey_born: usize,
+    pub predators_born: usize,
+    pub prey_eaten: usize,
+    pub prey_died_of_age: usize,
+    pub predators_died: usize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DeathReason {
+    Eaten,
+    Age,
+    Starvation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeathRequest {
+    pub entity: Entity,
+    pub species: Species,
+    pub reason: DeathReason,
+}
+
+#[derive(Debug, Default)]
+pub struct DeathQueue {
+    pub requests: Vec<DeathRequest>,
+}
+
+impl DeathQueue {
+    pub fn contains(&self, entity: Entity) -> bool {
+        self.requests.iter().any(|request| request.entity == entity)
+    }
+
+    pub fn push(&mut self, request: DeathRequest) {
+        if !self.contains(request.entity) {
+            self.requests.push(request);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpawnRequest {
+    pub species: Species,
+    pub parent_position: [f32; 2],
+}
+
+#[derive(Debug, Default)]
+pub struct SpawnQueue {
+    pub requests: Vec<SpawnRequest>,
 }
 
 const CLICK_DRAG_THRESHOLD_SQUARED: f32 = 16.0;
