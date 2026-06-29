@@ -157,16 +157,17 @@ The fan is centered on the agent's current facing direction. For example, with a
 -45, -30, -15, 0, 15, 30, 45 degrees
 ```
 
-V1 vision is not an engine physics raycast. It is a simulation query:
+V1 vision is not an engine physics raycast. It is a simulation query using
+ray-circle intersections:
 
-1. For each agent, inspect other agents in the world.
-2. Convert each target into local polar coordinates relative to the viewer.
-3. Assign the target to the closest matching ray if it is within `max_distance`
-   and inside the vision fan.
-4. Keep only the nearest target per ray.
+1. Snapshot the position, rotation, species, and radius of every agent.
+2. Cast each viewer ray against the other agents' circular bounds.
+3. Ignore the viewer itself and intersections beyond `max_distance`.
+4. Keep only the nearest intersected target per ray.
 
-Torus distance should be considered when measuring agent distance, so an agent
-near the right edge can perceive an agent near the left edge through the wrap.
+V1 vision does not cross the torus boundary. An agent near one edge cannot see
+an agent near the opposite edge until one of them wraps. Wrapped vision can be
+added later if the discontinuity harms learned behavior.
 
 ## Brain Interface
 
@@ -176,24 +177,24 @@ V1 uses a placeholder brain.
 For each ray, the input contains:
 
 ```text
-[target_type, normalized_distance]
+[normalized_distance, prey, predator]
 ```
 
-`target_type` values:
+Species channels use one-hot encoding:
 
-- `0.0`: no target detected.
-- `1.0`: prey detected.
-- `-1.0`: predator detected.
+- Prey: `[normalized_distance, 1.0, 0.0]`
+- Predator: `[normalized_distance, 0.0, 1.0]`
+- No target: `[1.0, 0.0, 0.0]`
 
 `normalized_distance`:
 
-- `distance / max_distance` when a target is detected.
+- Ray intersection distance to the target circle divided by `max_distance`.
 - `1.0` when no target is detected.
 
 Input length:
 
 ```text
-ray_count * 2
+ray_count * 3
 ```
 
 Brain output:
@@ -324,6 +325,10 @@ pub struct Vision {
     pub ray_interval: f32,
 }
 
+pub struct VisionOutput {
+    pub hits: Vec<Option<VisionHit>>,
+}
+
 pub struct Brain {
     pub kind: BrainKind,
 }
@@ -410,7 +415,8 @@ latest simulation state.
 
 Reasoning:
 
-- Vision should read the previous frame's positions.
+- Vision snapshots positions before movement, so it reads the previous fixed
+  frame's positions.
 - Movement should happen before predation.
 - Predation should mark prey as dead before reproduction is processed.
 - Spawns and despawns should happen after systems finish collecting decisions.
@@ -464,10 +470,10 @@ and parentheses until the font atlas character set is expanded.
 Unit tests:
 
 - Ray count calculation handles exact and non-exact angle division.
-- Vision input length is `ray_count * 2`.
-- Target type encoding is stable.
+- Vision input length is `ray_count * 3`.
+- Species one-hot encoding and the no-target value are stable.
 - Torus wrapping maps coordinates to the opposite side.
-- Torus distance picks the shorter wrapped delta.
+- V1 vision does not detect targets across the torus boundary.
 - Prey reproduction becomes available only after survival age and cooldown.
 - Predator reproduction becomes available only after enough food and cooldown.
 - Species population cap prevents extra spawn requests.

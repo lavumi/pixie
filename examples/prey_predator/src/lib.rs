@@ -5,7 +5,7 @@ use crate::prey_predator_app::PreyPredatorApp;
 
 pub use pixie::renderer;
 
-mod components;
+pub mod components;
 mod config;
 pub mod prey_predator_app;
 mod resources;

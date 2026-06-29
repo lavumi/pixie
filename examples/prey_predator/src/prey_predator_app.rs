@@ -8,9 +8,10 @@ use pixie::{
     Application, Camera, ResourceContainer, Sprite, Text, TextCoordinateSpace, TextStyle, Transform,
 };
 
-use crate::components::{Agent, AgentMotion, Species};
+use crate::components::{Agent, AgentMotion, Species, Vision, VisionOutput};
 use crate::config;
 use crate::resources::{SimulationConfig, SimulationStats};
+use crate::system::vision::collect_vision;
 
 pub struct PreyPredatorApp {
     paused: bool,
@@ -62,6 +63,7 @@ impl Application for PreyPredatorApp {
         resources: &mut ResourceContainer,
         fixed_dt: f32,
     ) {
+        collect_vision(world);
         self.update_agent_motion(world, resources, fixed_dt);
     }
 
@@ -167,13 +169,18 @@ impl PreyPredatorApp {
         let y = self.rng.gen_range(-half_height..half_height);
         let rotation = self.rng.gen_range(0.0..std::f32::consts::TAU);
 
-        let (atlas, size, z, max_abs_speed, max_abs_angular_velocity) = match species {
+        let (atlas, size, z, max_abs_speed, max_abs_angular_velocity, vision) = match species {
             Species::Prey => (
                 "prey",
                 config::PREY_SIZE,
                 0.3,
                 config::PREY_MAX_ABS_SPEED,
                 config::PREY_MAX_ABS_ANGULAR_VELOCITY,
+                Vision::new(
+                    config::PREY_VISION_MAX_DISTANCE,
+                    config::PREY_VISION_TOTAL_ANGLE,
+                    config::PREY_VISION_RAY_INTERVAL,
+                ),
             ),
             Species::Predator => (
                 "predator",
@@ -181,6 +188,11 @@ impl PreyPredatorApp {
                 0.4,
                 config::PREDATOR_MAX_ABS_SPEED,
                 config::PREDATOR_MAX_ABS_ANGULAR_VELOCITY,
+                Vision::new(
+                    config::PREDATOR_VISION_MAX_DISTANCE,
+                    config::PREDATOR_VISION_TOTAL_ANGLE,
+                    config::PREDATOR_VISION_RAY_INTERVAL,
+                ),
             ),
         };
         let speed = self.random_signed_min_magnitude(max_abs_speed, 0.35);
@@ -201,6 +213,8 @@ impl PreyPredatorApp {
                 angular_velocity,
                 max_abs_angular_velocity,
             ),
+            vision,
+            VisionOutput::empty(&vision),
         ));
     }
 

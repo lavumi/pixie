@@ -1,7 +1,7 @@
-pub const SCREEN_SIZE: [u32; 2] = [1280, 720];
+pub const SCREEN_SIZE: [u32; 2] = [1600, 1200];
 
 pub const WORLD_WIDTH: f32 = 40.0;
-pub const WORLD_HEIGHT: f32 = 24.0;
+pub const WORLD_HEIGHT: f32 = 40.0;
 
 pub const INITIAL_PREY: usize = 80;
 pub const INITIAL_PREDATORS: usize = 12;
@@ -19,3 +19,11 @@ pub const PREDATOR_MAX_ABS_SPEED: f32 = 3.8;
 
 pub const PREY_MAX_ABS_ANGULAR_VELOCITY: f32 = 1.6;
 pub const PREDATOR_MAX_ABS_ANGULAR_VELOCITY: f32 = 1.3;
+
+pub const PREY_VISION_MAX_DISTANCE: f32 = 7.0;
+pub const PREY_VISION_TOTAL_ANGLE: f32 = 160.0 * std::f32::consts::PI / 180.0;
+pub const PREY_VISION_RAY_INTERVAL: f32 = 20.0 * std::f32::consts::PI / 180.0;
+
+pub const PREDATOR_VISION_MAX_DISTANCE: f32 = 9.0;
+pub const PREDATOR_VISION_TOTAL_ANGLE: f32 = 120.0 * std::f32::consts::PI / 180.0;
+pub const PREDATOR_VISION_RAY_INTERVAL: f32 = 15.0 * std::f32::consts::PI / 180.0;
