@@ -82,6 +82,75 @@ pub enum TextCoordinateSpace {
     Screen,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum UiAnchor {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl UiAnchor {
+    pub fn factor(self) -> [f32; 2] {
+        match self {
+            Self::TopLeft => [0.0, 0.0],
+            Self::TopCenter => [0.5, 0.0],
+            Self::TopRight => [1.0, 0.0],
+            Self::CenterLeft => [0.0, 0.5],
+            Self::Center => [0.5, 0.5],
+            Self::CenterRight => [1.0, 0.5],
+            Self::BottomLeft => [0.0, 1.0],
+            Self::BottomCenter => [0.5, 1.0],
+            Self::BottomRight => [1.0, 1.0],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub enum UiRoot {
+    #[default]
+    RenderViewport,
+    Window,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UiTransform {
+    /// Parent reference point in the selected UI root.
+    pub anchor: UiAnchor,
+    /// Reference point inside the widget's rendered bounds.
+    pub pivot: UiAnchor,
+    /// Pixel offset from the anchor. Positive Y points down.
+    pub offset: [f32; 2],
+    pub root: UiRoot,
+}
+
+impl UiTransform {
+    pub fn new(anchor: UiAnchor, pivot: UiAnchor, offset: [f32; 2]) -> Self {
+        Self {
+            anchor,
+            pivot,
+            offset,
+            root: UiRoot::RenderViewport,
+        }
+    }
+
+    pub fn with_root(mut self, root: UiRoot) -> Self {
+        self.root = root;
+        self
+    }
+}
+
+impl Default for UiTransform {
+    fn default() -> Self {
+        Self::new(UiAnchor::Center, UiAnchor::Center, [0.0, 0.0])
+    }
+}
+
 impl Default for TextStyle {
     fn default() -> Self {
         TextStyle {

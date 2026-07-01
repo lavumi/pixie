@@ -1,5 +1,5 @@
 use crate::renderer::mesh::SpriteInstanceRaw;
-use crate::{AtlasId, DebugLine};
+use crate::{AtlasId, DebugLine, UiTransform};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,6 +9,7 @@ pub struct TextRenderData {
     pub color: [f32; 3],
     pub position: [f32; 3],
     pub size: [f32; 2],
+    pub ui_transform: Option<UiTransform>,
 }
 
 pub struct SpriteRenderData {

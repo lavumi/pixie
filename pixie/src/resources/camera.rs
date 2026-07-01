@@ -79,7 +79,7 @@ impl Camera {
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
             up: cgmath::Vector3::unit_y(),
-            aspect: 0.0,
+            aspect: aspect_ratio,
             fov_y: 0.0,
             right: width,
             top: height,
@@ -121,15 +121,20 @@ impl Camera {
     #[allow(unused)]
     pub fn set_zoom(&mut self, height: f32) {
         let height = height.max(MIN_ORTHOGRAPHIC_HALF_HEIGHT);
-        let width = if self.aspect != 0.0 {
-            self.aspect * height
-        } else {
-            // For orthographic cameras, recalculate width based on current aspect ratio
-            let current_aspect = self.right / self.top;
-            current_aspect * height
-        };
+        let width = self.aspect * height;
         self.right = width;
         self.top = height;
+    }
+
+    pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
+        if !aspect_ratio.is_finite() || aspect_ratio <= 0.0 {
+            return;
+        }
+
+        self.aspect = aspect_ratio;
+        if !self.perspective {
+            self.right = self.top * aspect_ratio;
+        }
     }
 
     pub fn zoom(&self) -> f32 {
@@ -298,5 +303,16 @@ mod tests {
             camera.screen_to_world([100.0, 100.0], viewport),
             [4.0, -3.0],
         );
+    }
+
+    #[test]
+    fn orthographic_aspect_change_preserves_vertical_zoom() {
+        let mut camera = Camera::init_orthographic(10.0, 1.0);
+
+        camera.set_aspect_ratio(2.0);
+
+        assert_eq!(camera.zoom(), 10.0);
+        let viewport = RenderViewport::new(0.0, 0.0, 200.0, 100.0);
+        assert_position_close(camera.screen_to_world([200.0, 50.0], viewport), [20.0, 0.0]);
     }
 }

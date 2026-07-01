@@ -6,7 +6,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 
 use pixie::{
     Application, Camera, DebugDraw, DebugLine, RenderViewport, ResourceContainer, Sprite, Text,
-    TextCoordinateSpace, TextStyle, Transform,
+    TextCoordinateSpace, TextStyle, Transform, UiAnchor, UiTransform, ViewportMode,
 };
 
 use crate::components::{
@@ -46,6 +46,7 @@ impl Default for PreyPredatorApp {
 
 impl Application for PreyPredatorApp {
     fn init(&mut self, world: &mut World, resources: &mut ResourceContainer) {
+        resources.insert(ViewportMode::Expand);
         if let Some(camera) = resources.get_mut::<Camera>() {
             camera.set_zoom(24.0);
         }
@@ -204,7 +205,6 @@ impl PreyPredatorApp {
 
     fn create_hud(&mut self, world: &mut World) {
         self.hud_text_entity = Some(world.spawn((
-            Transform::new([20.0, 32.0, 0.0], [1.0, 1.0]),
             Text::default(),
             TextStyle {
                 size: [18.0, 18.0],
@@ -212,6 +212,11 @@ impl PreyPredatorApp {
                 z_index: -10.0,
                 coordinate_space: TextCoordinateSpace::Screen,
             },
+            UiTransform::new(
+                UiAnchor::TopLeft,
+                UiAnchor::TopLeft,
+                config::HUD_OFFSET_PIXELS,
+            ),
         )));
     }
 
@@ -682,6 +687,21 @@ mod tests {
             Some(nearer)
         );
         assert_ne!(nearer, farther);
+    }
+
+    #[test]
+    fn hud_uses_top_left_anchor_and_pivot() {
+        let mut app = PreyPredatorApp::default();
+        let mut world = World::new();
+
+        app.create_hud(&mut world);
+
+        let entity = app.hud_text_entity.unwrap();
+        let ui_transform = world.get::<&UiTransform>(entity).unwrap();
+        assert_eq!(ui_transform.anchor, UiAnchor::TopLeft);
+        assert_eq!(ui_transform.pivot, UiAnchor::TopLeft);
+        assert_eq!(ui_transform.offset, config::HUD_OFFSET_PIXELS);
+        assert!(world.get::<&Transform>(entity).is_err());
     }
 
     #[test]

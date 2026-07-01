@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use hecs::World;
 
-use crate::components::{Sprite, Text, TextCoordinateSpace, TextStyle, Transform};
+use crate::components::{
+    Sprite, Text, TextCoordinateSpace, TextStyle, Transform, UiAnchor, UiTransform,
+};
 use crate::renderer::{RenderFrame, SpriteRenderData, TextRenderData};
 use crate::resources::ResourceContainer;
 use crate::{AtlasError, AtlasId, DebugDraw, DebugLine, TextureAtlasRegistry};
@@ -102,18 +104,46 @@ impl RenderWorldExtractor {
         self.world_text_render_buffer.clear();
         self.screen_text_render_buffer.clear();
 
-        for (_, (transform, text, style)) in world.query::<(&Transform, &Text, &TextStyle)>().iter()
+        for (entity, (transform, text, style)) in
+            world.query::<(&Transform, &Text, &TextStyle)>().iter()
         {
-            let buffer = match style.coordinate_space {
-                TextCoordinateSpace::World => &mut self.world_text_render_buffer,
-                TextCoordinateSpace::Screen => &mut self.screen_text_render_buffer,
-            };
+            match style.coordinate_space {
+                TextCoordinateSpace::World => self.world_text_render_buffer.push(TextRenderData {
+                    content: Arc::new(text.content.clone()),
+                    position: [transform.position[0], transform.position[1], style.z_index],
+                    size: style.size,
+                    color: style.color,
+                    ui_transform: None,
+                }),
+                TextCoordinateSpace::Screen if world.get::<&UiTransform>(entity).is_err() => {
+                    self.screen_text_render_buffer.push(TextRenderData {
+                        content: Arc::new(text.content.clone()),
+                        position: [0.0, 0.0, style.z_index],
+                        size: style.size,
+                        color: style.color,
+                        ui_transform: Some(UiTransform::new(
+                            UiAnchor::TopLeft,
+                            UiAnchor::TopLeft,
+                            [transform.position[0], transform.position[1]],
+                        )),
+                    });
+                }
+                TextCoordinateSpace::Screen => {}
+            }
+        }
 
-            buffer.push(TextRenderData {
+        for (_, (text, style, ui_transform)) in
+            world.query::<(&Text, &TextStyle, &UiTransform)>().iter()
+        {
+            if style.coordinate_space != TextCoordinateSpace::Screen {
+                continue;
+            }
+            self.screen_text_render_buffer.push(TextRenderData {
                 content: Arc::new(text.content.clone()),
-                position: [transform.position[0], transform.position[1], style.z_index],
+                position: [0.0, 0.0, style.z_index],
                 size: style.size,
                 color: style.color,
+                ui_transform: Some(*ui_transform),
             });
         }
     }
@@ -367,6 +397,33 @@ mod tests {
         assert_eq!(frame.world_texts()[0].content.as_str(), "label");
         assert_eq!(frame.screen_texts().len(), 1);
         assert_eq!(frame.screen_texts()[0].content.as_str(), "hud");
+    }
+
+    #[test]
+    fn extracts_anchored_screen_text_without_transform() {
+        let mut world = World::new();
+        let ui_transform =
+            UiTransform::new(UiAnchor::BottomRight, UiAnchor::BottomRight, [-20.0, -30.0]);
+        world.spawn((
+            Text {
+                content: "anchored".to_string(),
+            },
+            TextStyle {
+                size: [16.0, 16.0],
+                color: [1.0, 1.0, 1.0],
+                z_index: 0.5,
+                coordinate_space: TextCoordinateSpace::Screen,
+            },
+            ui_transform,
+        ));
+
+        let resources = resources_with_camera();
+        let mut extractor = RenderWorldExtractor::default();
+        let frame = extractor.extract(&world, &resources).unwrap();
+
+        assert_eq!(frame.screen_texts().len(), 1);
+        assert_eq!(frame.screen_texts()[0].ui_transform, Some(ui_transform));
+        assert!(frame.world_texts().is_empty());
     }
 
     #[test]

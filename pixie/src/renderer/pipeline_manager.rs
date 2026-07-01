@@ -190,6 +190,28 @@ impl PipelineManager {
 
         self.pipelines
             .insert("font_pl".to_string(), render_pipeline);
+
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../../assets/shader/font.wgsl"));
+        let render_pipeline = PipelineDesc {
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            depth_stencil: None,
+            buffers: &[Vertex::desc(), ColorSpriteInstanceRaw::desc()],
+            sample_count: 1,
+            sampler_mask: 0,
+            alpha_to_coverage_enabled: false,
+            layouts: vec![
+                "camera_bind_group_layout".to_string(),
+                "texture_bind_group_layout".to_string(),
+            ],
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            label: "UI Font Render Pipeline".to_string(),
+        }
+        .build(shader, device, default_format, gpu_resource_manager);
+
+        self.pipelines
+            .insert("ui_font_pl".to_string(), render_pipeline);
     }
 
     pub fn get_pipeline(&self, name: &str) -> &wgpu::RenderPipeline {

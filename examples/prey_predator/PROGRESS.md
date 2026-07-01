@@ -121,6 +121,26 @@
   reproduction cooldown.
 - HUD now reports births, prey eaten, prey age deaths, and predator deaths.
 
+### Anchored UI Layout
+
+- Added nine-position `UiAnchor` values from top-left through bottom-right.
+- Added `UiTransform` with independent anchor and widget pivot.
+- UI offsets use pixels with positive Y pointing down.
+- UI roots can target the game `RenderViewport` or the full window.
+- Screen text uses measured glyph bounds for pivot alignment.
+- Screen UI renders through a depth-independent full-window layer.
+- Migrated the simulation HUD to `TopLeft` anchor and `TopLeft` pivot.
+- Added deterministic resize and letterbox margin tests.
+
+### Responsive Viewport
+
+- Added engine-level `ViewportMode`.
+- Engine default remains `ViewportMode::FixedAspect` with letterboxing.
+- The prey/predator example selects `ViewportMode::Expand`.
+- Expand mode uses the full resized window without letterboxing.
+- Orthographic camera vertical zoom stays fixed while horizontal visibility
+  follows the new window aspect ratio.
+
 ## Verified
 
 The latest implementation was verified with:

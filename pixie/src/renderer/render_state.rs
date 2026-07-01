@@ -13,7 +13,7 @@ use crate::renderer::render_input_data::*;
 use crate::renderer::texture;
 use crate::renderer::vertex::DebugLineVertex;
 use crate::renderer::RenderError;
-use crate::{AtlasId, DebugLine, RenderViewport};
+use crate::{AtlasId, DebugLine, RenderViewport, UiRoot, ViewportMode};
 
 #[rustfmt::skip]
 const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -294,7 +294,7 @@ impl RenderState {
     pub fn set_clear_color(&mut self, color: wgpu::Color) {
         self.color = color;
     }
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, viewport_mode: ViewportMode) {
         if new_size.width > 0 && new_size.height > 0 {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
@@ -302,8 +302,9 @@ impl RenderState {
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
             self.surface.configure(&self.device, &self.config);
 
-            self.viewport_data =
-                RenderViewport::fit(new_size.width, new_size.height, self.aspect_ratio).wgpu_data();
+            self.viewport_data = viewport_mode
+                .viewport(new_size.width, new_size.height, self.aspect_ratio)
+                .wgpu_data();
         }
     }
 
@@ -395,19 +396,28 @@ impl RenderState {
     }
 
     fn update_screen_text_instance(&mut self, texts: &[TextRenderData]) {
-        let half_width = self.config.width as f32 * 0.5;
-        let half_height = self.config.height as f32 * 0.5;
-        let converted = texts
+        let window_size = [self.config.width as f32, self.config.height as f32];
+        let window = RenderViewport::new(0.0, 0.0, window_size[0], window_size[1]);
+        let viewport = self.viewport();
+        let sprite_instances = texts
             .iter()
-            .map(|text| {
-                let mut text = text.clone();
-                text.position[0] -= half_width;
-                text.position[1] = half_height - text.position[1];
-                text
+            .flat_map(|text| {
+                let ui_transform = text.ui_transform.unwrap_or_default();
+                let root = match ui_transform.root {
+                    UiRoot::RenderViewport => viewport,
+                    UiRoot::Window => window,
+                };
+                self.font_manager
+                    .make_ui_instance_buffer(text, ui_transform, root, window_size)
             })
             .collect::<Vec<_>>();
 
-        self.update_text_instance("screen_text", &converted);
+        self.gpu_resource_manager.update_color_sprite_instances(
+            "screen_text",
+            &self.device,
+            &self.queue,
+            sprite_instances,
+        );
     }
 
     fn render(&self, frame: &RenderFrame<'_>) -> Result<(), RenderError> {
@@ -482,6 +492,35 @@ impl RenderState {
                 .set_bind_group(&mut render_pass, "camera");
             self.gpu_resource_manager
                 .render_text(&mut render_pass, "world_text");
+        }
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("UI Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_viewport(
+                0.0,
+                0.0,
+                self.config.width as f32,
+                self.config.height as f32,
+                0.0,
+                1.0,
+            );
+            let render_pipeline = self.pipeline_manager.get_pipeline("ui_font_pl");
+            render_pass.set_pipeline(render_pipeline);
             self.gpu_resource_manager
                 .set_bind_group(&mut render_pass, "ui_camera");
             self.gpu_resource_manager

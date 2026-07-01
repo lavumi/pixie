@@ -12,7 +12,7 @@ use crate::dispatcher::UnifiedDispatcher;
 use crate::renderer::*;
 use crate::resources::{
     Camera, CameraController, ClearColor, DebugDraw, DeltaTime, RenderViewport, ResourceContainer,
-    WindowSize,
+    ViewportMode, WindowSize,
 };
 use crate::{TextureAtlasAsset, TextureAtlasRegistry};
 #[cfg(not(target_arch = "wasm32"))]
@@ -259,7 +259,12 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                             self.exit_with_error(event_loop, error.into());
                                             return;
                                         }
-                                        rs.resize(self.size);
+                                        let viewport_mode = self
+                                            .resources
+                                            .get::<ViewportMode>()
+                                            .copied()
+                                            .unwrap_or_default();
+                                        rs.resize(self.size, viewport_mode);
                                         self.resources.insert(rs.viewport());
                                         self.rs = Some(rs);
                                     }
@@ -299,8 +304,13 @@ impl<A: Application> ApplicationHandler<()> for Engine<A> {
                                 Err(RenderError::Surface(
                                     wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                 )) => {
+                                    let viewport_mode = self
+                                        .resources
+                                        .get::<ViewportMode>()
+                                        .copied()
+                                        .unwrap_or_default();
                                     if let Some(rs) = &mut self.rs {
-                                        rs.resize(self.size);
+                                        rs.resize(self.size, viewport_mode);
                                     }
                                 }
                                 Err(RenderError::Surface(wgpu::SurfaceError::OutOfMemory)) => {
@@ -368,6 +378,7 @@ impl<A: Application> Engine<A> {
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
         resources.insert(RenderViewport::new(0.0, 0.0, width as f32, height as f32));
+        resources.insert(ViewportMode::default());
         resources.insert(DeltaTime(0.0));
         resources.insert(DebugDraw::with_capacity(256));
         resources.insert(TextureAtlasRegistry::default());
@@ -422,6 +433,7 @@ impl<A: Application> Engine<A> {
         resources.insert(CameraController::default());
         resources.insert(WindowSize::new(width, height));
         resources.insert(RenderViewport::new(0.0, 0.0, width as f32, height as f32));
+        resources.insert(ViewportMode::default());
         resources.insert(DeltaTime(0.0));
         resources.insert(DebugDraw::with_capacity(256));
         let mut atlas_registry = TextureAtlasRegistry::default();
@@ -470,12 +482,23 @@ impl<A: Application> Engine<A> {
         self.size = new_size;
         self.resources
             .insert(WindowSize::new(new_size.width, new_size.height));
+        let viewport_mode = self
+            .resources
+            .get::<ViewportMode>()
+            .copied()
+            .unwrap_or_default();
+        if viewport_mode == ViewportMode::Expand && new_size.width > 0 && new_size.height > 0 {
+            let aspect_ratio = new_size.width as f32 / new_size.height as f32;
+            if let Some(camera) = self.resources.get_mut::<Camera>() {
+                camera.set_aspect_ratio(aspect_ratio);
+            }
+        }
         if let Some(rs) = &mut self.rs {
-            rs.resize(new_size);
+            rs.resize(new_size, viewport_mode);
             self.resources.insert(rs.viewport());
         } else {
             let target_aspect = self.initial_width as f32 / self.initial_height.max(1) as f32;
-            self.resources.insert(RenderViewport::fit(
+            self.resources.insert(viewport_mode.viewport(
                 new_size.width,
                 new_size.height,
                 target_aspect,

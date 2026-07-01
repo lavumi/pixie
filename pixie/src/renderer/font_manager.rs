@@ -1,5 +1,6 @@
 use crate::renderer::mesh::ColorSpriteInstanceRaw;
 use crate::renderer::{FontError, TextRenderData};
+use crate::{RenderViewport, UiTransform};
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle as FontdueTextStyle};
 use fontdue::{Font, Metrics};
 use std::cmp::max;
@@ -317,6 +318,71 @@ impl FontManager {
 
         result
     }
+
+    pub fn make_ui_instance_buffer(
+        &self,
+        text: &TextRenderData,
+        ui_transform: UiTransform,
+        root: RenderViewport,
+        window_size: [f32; 2],
+    ) -> Vec<ColorSpriteInstanceRaw> {
+        let mut local_text = text.clone();
+        local_text.position[0] = 0.0;
+        local_text.position[1] = 0.0;
+        let mut instances = self.make_instance_buffer(&local_text);
+        let Some(bounds) = instance_bounds(&instances) else {
+            return instances;
+        };
+
+        let anchor_factor = ui_transform.anchor.factor();
+        let anchor_screen = [
+            root.x + root.width * anchor_factor[0] + ui_transform.offset[0],
+            root.y + root.height * anchor_factor[1] + ui_transform.offset[1],
+        ];
+        let anchor_position = [
+            anchor_screen[0] - window_size[0] * 0.5,
+            window_size[1] * 0.5 - anchor_screen[1],
+        ];
+
+        let pivot_factor = ui_transform.pivot.factor();
+        let pivot_position = [
+            bounds[0] + (bounds[2] - bounds[0]) * pivot_factor[0],
+            bounds[3] - (bounds[3] - bounds[1]) * pivot_factor[1],
+        ];
+        let translation = [
+            anchor_position[0] - pivot_position[0],
+            anchor_position[1] - pivot_position[1],
+        ];
+
+        for instance in &mut instances {
+            instance.model[3][0] += translation[0];
+            instance.model[3][1] += translation[1];
+        }
+        instances
+    }
+}
+
+fn instance_bounds(instances: &[ColorSpriteInstanceRaw]) -> Option<[f32; 4]> {
+    let first = instances.first()?;
+    let first_half_size = [first.model[0][0].abs() * 0.5, first.model[1][1].abs() * 0.5];
+    let mut bounds = [
+        first.model[3][0] - first_half_size[0],
+        first.model[3][1] - first_half_size[1],
+        first.model[3][0] + first_half_size[0],
+        first.model[3][1] + first_half_size[1],
+    ];
+
+    for instance in &instances[1..] {
+        let half_size = [
+            instance.model[0][0].abs() * 0.5,
+            instance.model[1][1].abs() * 0.5,
+        ];
+        bounds[0] = bounds[0].min(instance.model[3][0] - half_size[0]);
+        bounds[1] = bounds[1].min(instance.model[3][1] - half_size[1]);
+        bounds[2] = bounds[2].max(instance.model[3][0] + half_size[0]);
+        bounds[3] = bounds[3].max(instance.model[3][1] + half_size[1]);
+    }
+    Some(bounds)
 }
 
 #[cfg(test)]
@@ -336,6 +402,7 @@ mod tests {
             color: [1.0, 1.0, 1.0],
             position: [10.0, 20.0, 0.5],
             size: [RASTER_SIZE, RASTER_SIZE],
+            ui_transform: None,
         }
     }
 
@@ -443,5 +510,100 @@ mod tests {
         assert!(
             (translation(&lines[0])[1] - translation(&lines[1])[1] - line_height).abs() < 0.001
         );
+    }
+
+    #[test]
+    fn ui_top_left_anchor_and_pivot_use_viewport_pixels() {
+        let manager = manager();
+        let data = text("A");
+        let instances = manager.make_ui_instance_buffer(
+            &data,
+            UiTransform::new(
+                crate::UiAnchor::TopLeft,
+                crate::UiAnchor::TopLeft,
+                [20.0, 30.0],
+            ),
+            RenderViewport::new(100.0, 50.0, 800.0, 400.0),
+            [1000.0, 600.0],
+        );
+        let bounds = instance_bounds(&instances).unwrap();
+
+        assert!((bounds[0] - -380.0).abs() < 0.001);
+        assert!((bounds[3] - 220.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn ui_bottom_right_anchor_and_pivot_align_widget_bounds() {
+        let manager = manager();
+        let data = text("A");
+        let instances = manager.make_ui_instance_buffer(
+            &data,
+            UiTransform::new(
+                crate::UiAnchor::BottomRight,
+                crate::UiAnchor::BottomRight,
+                [-20.0, -30.0],
+            ),
+            RenderViewport::new(100.0, 50.0, 800.0, 400.0),
+            [1000.0, 600.0],
+        );
+        let bounds = instance_bounds(&instances).unwrap();
+
+        assert!((bounds[2] - 380.0).abs() < 0.001);
+        assert!((bounds[1] - -120.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn ui_viewport_anchor_preserves_pixel_margin_after_resize() {
+        let manager = manager();
+        let data = text("A");
+        let ui_transform = UiTransform::new(
+            crate::UiAnchor::TopLeft,
+            crate::UiAnchor::TopLeft,
+            [20.0, 30.0],
+        );
+
+        for (window_size, viewport) in [
+            ([1600.0, 900.0], RenderViewport::fit(1600, 900, 4.0 / 3.0)),
+            ([900.0, 1600.0], RenderViewport::fit(900, 1600, 4.0 / 3.0)),
+        ] {
+            let instances =
+                manager.make_ui_instance_buffer(&data, ui_transform, viewport, window_size);
+            let bounds = instance_bounds(&instances).unwrap();
+            let left_screen = bounds[0] + window_size[0] * 0.5;
+            let top_screen = window_size[1] * 0.5 - bounds[3];
+
+            assert!((left_screen - (viewport.x + 20.0)).abs() < 0.001);
+            assert!((top_screen - (viewport.y + 30.0)).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn ui_offset_translates_rendered_glyphs_in_pixels() {
+        let manager = manager();
+        let data = text("A");
+        let root = RenderViewport::new(0.0, 0.0, 800.0, 600.0);
+        let base = manager.make_ui_instance_buffer(
+            &data,
+            UiTransform::new(
+                crate::UiAnchor::TopLeft,
+                crate::UiAnchor::TopLeft,
+                [0.0, 0.0],
+            ),
+            root,
+            [800.0, 600.0],
+        );
+        let moved = manager.make_ui_instance_buffer(
+            &data,
+            UiTransform::new(
+                crate::UiAnchor::TopLeft,
+                crate::UiAnchor::TopLeft,
+                [100.0, 75.0],
+            ),
+            root,
+            [800.0, 600.0],
+        );
+
+        assert!((translation(&moved[0])[0] - translation(&base[0])[0] - 100.0).abs() < 0.001);
+        assert!((translation(&moved[0])[1] - translation(&base[0])[1] + 75.0).abs() < 0.001);
     }
 }

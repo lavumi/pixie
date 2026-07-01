@@ -354,6 +354,7 @@ Pixie components used directly:
 - `Sprite`
 - `Text`
 - `TextStyle`
+- `UiTransform` for anchored screen-space HUD layout
 
 Avoid using Pixie's current physics collision system for V1 predation. The
 existing collision system is useful for demos, but predator/prey interaction is
@@ -441,6 +442,8 @@ Input:
 Startup:
 
 - Set camera zoom so the full torus world is visible.
+- Use `ViewportMode::Expand` so resize reveals more or less horizontal world
+  space instead of adding letterbox bars.
 - Insert config and stats resources.
 - Spawn HUD text.
 - Spawn initial prey and predator populations.
