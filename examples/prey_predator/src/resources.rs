@@ -20,6 +20,12 @@ pub struct SimulationConfig {
     pub predator_starvation_time: f32,
     pub predation_radius: f32,
     pub offspring_spawn_offset: f32,
+    pub brain_hidden_layers: Vec<usize>,
+    pub brain_output_size: usize,
+    pub brain_mutation_rate: f32,
+    pub brain_mutation_sigma: f32,
+    pub brain_reset_rate: f32,
+    pub brain_max_abs_gene: f32,
 }
 
 impl Default for SimulationConfig {
@@ -40,6 +46,12 @@ impl Default for SimulationConfig {
             predator_starvation_time: config::PREDATOR_STARVATION_TIME,
             predation_radius: config::PREDATION_RADIUS,
             offspring_spawn_offset: config::OFFSPRING_SPAWN_OFFSET,
+            brain_hidden_layers: config::BRAIN_HIDDEN_LAYERS.to_vec(),
+            brain_output_size: config::BRAIN_OUTPUT_SIZE,
+            brain_mutation_rate: config::BRAIN_MUTATION_RATE,
+            brain_mutation_sigma: config::BRAIN_MUTATION_SIGMA,
+            brain_reset_rate: config::BRAIN_RESET_RATE,
+            brain_max_abs_gene: config::BRAIN_MAX_ABS_GENE,
         }
     }
 }
@@ -89,6 +101,7 @@ impl DeathQueue {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpawnRequest {
+    pub parent: Entity,
     pub species: Species,
     pub parent_position: [f32; 2],
 }

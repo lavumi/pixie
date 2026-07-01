@@ -141,6 +141,21 @@
 - Orthographic camera vertical zoom stays fixed while horizontal visibility
   follows the new window aspect ratio.
 
+### Fixed-Topology Neural Network
+
+- Added a configurable fully connected feed-forward network.
+- The default topology is `27 -> 16 -> 2` for the current 9-ray vision setup.
+- Added Xavier-uniform initial weight generation and zero biases.
+- Added `tanh` activation for hidden and output layers.
+- Brain output controls normalized angular velocity and signed speed.
+- Added per-agent `Brain` and `BrainOutput` components.
+- Fixed update order is now vision, brain processing, then movement.
+- Children clone the parent's genome and apply configurable Gaussian mutation
+  and low-probability gene reset.
+- Gene values are clamped to a configurable absolute limit.
+- Evolution remains asynchronous and single-parent; NEAT and crossover are
+  deferred.
+
 ## Verified
 
 The latest implementation was verified with:
@@ -159,12 +174,13 @@ encoding, and the V1 non-wrapped boundary.
 
 ## Known Gaps
 
-- The current movement is still random wandering, not brain-driven behavior.
+- There is no runtime brain inspector or genome export.
+- NEAT, mate selection, and crossover are not implemented.
 - Camera controls are engine-level now, but there is not yet a public preset API
   beyond mutating the `CameraController` resource directly.
 
 ## Suggested Next Steps
 
-1. Add a placeholder brain interface returning `[rotation_delta, speed]`.
-2. Replace random angular velocity with brain output while keeping clamps in
-   `AgentMotion`.
+1. Add selected-agent brain outputs and lifecycle values to the debug HUD.
+2. Add deterministic simulation seeds and genome serialization for experiments.
+3. Tune lifecycle and mutation parameters from observed population behavior.

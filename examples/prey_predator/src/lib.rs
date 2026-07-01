@@ -7,6 +7,7 @@ pub use pixie::renderer;
 
 pub mod components;
 mod config;
+mod neural_network;
 pub mod prey_predator_app;
 mod resources;
 mod system;

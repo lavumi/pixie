@@ -1,5 +1,7 @@
 use hecs::Entity;
 
+use crate::neural_network::{Genome, NetworkShape};
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Species {
     Prey,
@@ -34,6 +36,24 @@ impl AgentMotion {
             max_abs_angular_velocity,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Brain {
+    pub shape: NetworkShape,
+    pub genome: Genome,
+}
+
+impl Brain {
+    pub fn new(shape: NetworkShape, genome: Genome) -> Self {
+        Self { shape, genome }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct BrainOutput {
+    pub angular_velocity: f32,
+    pub speed: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

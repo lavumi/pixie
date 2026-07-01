@@ -329,12 +329,8 @@ pub struct VisionOutput {
 }
 
 pub struct Brain {
-    pub kind: BrainKind,
-}
-
-pub enum BrainKind {
-    Placeholder,
-    NeuralNetwork,
+    pub shape: NetworkShape,
+    pub genome: Genome,
 }
 
 pub struct LifeCycle {
@@ -347,6 +343,41 @@ pub struct Reproduction {
     pub cooldown_remaining: f32,
 }
 ```
+
+## Brain and Evolution
+
+V1 uses a configurable fixed-topology, fully connected feed-forward network.
+NEAT, crossover, and topology mutation are explicitly deferred.
+
+Default topology:
+
+```text
+27 vision inputs -> 16 hidden neurons -> 2 motion outputs
+```
+
+- Each of the 9 rays contributes normalized distance, prey presence, and
+  predator presence.
+- Output 0 is normalized angular velocity.
+- Output 1 is normalized signed speed, so backward movement remains possible.
+- Every layer uses `tanh`, keeping outputs in `[-1, 1]`.
+- Motion outputs are multiplied by each species' configured absolute limits.
+- Weights are initialized with Xavier uniform sampling and biases start at zero.
+
+The genome stores each layer in neuron-major order. Every neuron contributes all
+incoming weights followed by one bias. The default `27 -> 16 -> 2` network has
+482 genes.
+
+Evolution follows the simulation's asynchronous, single-parent reproduction:
+
+1. An initial agent receives a random genome.
+2. A reproducing agent is recorded as the parent in `SpawnRequest`.
+3. Its child clones the same shape and genome.
+4. Each gene can receive Gaussian perturbation or a low-probability reset.
+5. Genes are clamped to a configured absolute limit.
+
+There is no global generation or explicit fitness score. Survival and
+reproduction success provide selection pressure directly. Crossover is omitted
+because the current lifecycle has no mate selection.
 
 Pixie components used directly:
 
@@ -381,6 +412,12 @@ pub struct SimulationConfig {
     pub predator_starvation_time: f32,
     pub predation_radius: f32,
     pub offspring_spawn_offset: f32,
+    pub brain_hidden_layers: Vec<usize>,
+    pub brain_output_size: usize,
+    pub brain_mutation_rate: f32,
+    pub brain_mutation_sigma: f32,
+    pub brain_reset_rate: f32,
+    pub brain_max_abs_gene: f32,
 }
 
 pub struct SimulationStats {
@@ -406,7 +443,7 @@ The config should start as code constants. Runtime editing can be added later.
 The fixed update should run simulation systems in this order:
 
 1. `collect_vision`
-2. `process_brains` (future)
+2. `process_brains`
 3. `move_agents` and `wrap_world`
 4. `process_predation`
 5. `update_lifecycles`

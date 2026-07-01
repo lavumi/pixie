@@ -149,6 +149,7 @@ pub fn process_reproduction(
         }
 
         spawns.requests.push(SpawnRequest {
+            parent: entity,
             species: agent.species,
             parent_position: [transform.position[0], transform.position[1]],
         });
@@ -343,6 +344,7 @@ mod tests {
         assert_eq!(
             spawns.requests,
             vec![SpawnRequest {
+                parent,
                 species: Species::Prey,
                 parent_position: [1.0, 2.0],
             }]

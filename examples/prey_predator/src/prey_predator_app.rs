@@ -10,12 +10,14 @@ use pixie::{
 };
 
 use crate::components::{
-    Agent, AgentMotion, LifeCycle, Reproduction, Species, Vision, VisionOutput,
+    Agent, AgentMotion, Brain, BrainOutput, LifeCycle, Reproduction, Species, Vision, VisionOutput,
 };
 use crate::config;
+use crate::neural_network::{Genome, MutationConfig, NetworkShape};
 use crate::resources::{
     DeathQueue, DeathReason, SelectionState, SimulationConfig, SimulationStats, SpawnQueue,
 };
+use crate::system::brain::process_brains;
 use crate::system::lifecycle::{process_predation, process_reproduction, update_lifecycles};
 use crate::system::vision::collect_vision;
 
@@ -78,6 +80,7 @@ impl Application for PreyPredatorApp {
         fixed_dt: f32,
     ) {
         collect_vision(world);
+        process_brains(world);
         self.update_agent_motion(world, resources, fixed_dt);
 
         let Some(simulation_config) = resources.get::<SimulationConfig>().cloned() else {
@@ -240,7 +243,7 @@ impl PreyPredatorApp {
         let half_height = config.world_height * 0.5;
         let x = self.rng.gen_range(-half_width..half_width);
         let y = self.rng.gen_range(-half_height..half_height);
-        self.spawn_agent_at(world, species, [x, y], 0.0);
+        self.spawn_agent_at(world, species, [x, y], 0.0, config, None);
     }
 
     fn spawn_agent_at(
@@ -249,6 +252,8 @@ impl PreyPredatorApp {
         species: Species,
         position: [f32; 2],
         reproduction_cooldown: f32,
+        simulation_config: &SimulationConfig,
+        inherited_brain: Option<Brain>,
     ) {
         let rotation = self.rng.gen_range(0.0..std::f32::consts::TAU);
 
@@ -282,6 +287,25 @@ impl PreyPredatorApp {
         let angular_velocity = self
             .rng
             .gen_range(-max_abs_angular_velocity..max_abs_angular_velocity);
+        let brain = inherited_brain.unwrap_or_else(|| {
+            let shape = NetworkShape::new(
+                vision.input_len(),
+                &simulation_config.brain_hidden_layers,
+                simulation_config.brain_output_size,
+            );
+            let genome = Genome::random(&shape, &mut self.rng);
+            Brain::new(shape, genome)
+        });
+        assert_eq!(
+            brain.shape.input_size(),
+            vision.input_len(),
+            "inherited brain input size does not match offspring vision"
+        );
+        assert_eq!(
+            brain.shape.output_size(),
+            2,
+            "prey predator brains must produce rotation and speed outputs"
+        );
 
         world.spawn((
             Transform::with_rotation([position[0], position[1], z], size, rotation),
@@ -296,6 +320,8 @@ impl PreyPredatorApp {
                 angular_velocity,
                 max_abs_angular_velocity,
             ),
+            brain,
+            BrainOutput::default(),
             vision,
             VisionOutput::empty(&vision),
             LifeCycle::default(),
@@ -440,6 +466,21 @@ impl PreyPredatorApp {
         spawns: &mut SpawnQueue,
     ) {
         for request in spawns.requests.drain(..) {
+            let Ok(parent_brain) = world.get::<&Brain>(request.parent) else {
+                continue;
+            };
+            let mutation_config = MutationConfig {
+                mutation_rate: config.brain_mutation_rate,
+                mutation_sigma: config.brain_mutation_sigma,
+                reset_rate: config.brain_reset_rate,
+                max_abs_gene: config.brain_max_abs_gene,
+            };
+            let child_brain = Brain::new(
+                parent_brain.shape.clone(),
+                parent_brain.genome.mutated(&mutation_config, &mut self.rng),
+            );
+            drop(parent_brain);
+
             let angle = self.rng.gen_range(0.0..std::f32::consts::TAU);
             let distance = self.rng.gen_range(0.0..config.offspring_spawn_offset);
             let mut position = [
@@ -452,7 +493,14 @@ impl PreyPredatorApp {
                 Species::Prey => config.prey_reproduction_cooldown,
                 Species::Predator => config.predator_reproduction_cooldown,
             };
-            self.spawn_agent_at(world, request.species, [position[0], position[1]], cooldown);
+            self.spawn_agent_at(
+                world,
+                request.species,
+                [position[0], position[1]],
+                cooldown,
+                config,
+                Some(child_brain),
+            );
 
             if let Some(stats) = resources.get_mut::<SimulationStats>() {
                 match request.species {
@@ -835,10 +883,28 @@ mod tests {
         resources.insert(SimulationStats::default());
         let config = SimulationConfig {
             offspring_spawn_offset: 0.1,
+            brain_mutation_rate: 0.0,
+            brain_reset_rate: 0.0,
             ..SimulationConfig::default()
         };
+        let vision = Vision::new(
+            config::PREY_VISION_MAX_DISTANCE,
+            config::PREY_VISION_TOTAL_ANGLE,
+            config::PREY_VISION_RAY_INTERVAL,
+        );
+        let shape = NetworkShape::new(
+            vision.input_len(),
+            &config.brain_hidden_layers,
+            config.brain_output_size,
+        );
+        let parent_brain = Brain::new(
+            shape.clone(),
+            Genome::from_genes(&shape, vec![0.25; shape.parameter_count()]),
+        );
+        let parent = world.spawn((parent_brain.clone(),));
         let mut spawns = SpawnQueue {
             requests: vec![SpawnRequest {
+                parent,
                 species: Species::Prey,
                 parent_position: [2.0, 3.0],
             }],
@@ -846,13 +912,14 @@ mod tests {
 
         app.spawn_queued_agents(&mut world, &mut resources, &config, &mut spawns);
 
-        let mut query = world.query::<(&LifeCycle, &Reproduction)>();
-        let (_, (lifecycle, reproduction)) = query.iter().next().unwrap();
+        let mut query = world.query::<(&LifeCycle, &Reproduction, &Brain)>();
+        let (_, (lifecycle, reproduction, child_brain)) = query.iter().next().unwrap();
         assert_eq!(*lifecycle, LifeCycle::default());
         assert_eq!(
             reproduction.cooldown_remaining,
             config.prey_reproduction_cooldown
         );
+        assert_eq!(*child_brain, parent_brain);
         assert_eq!(resources.get::<SimulationStats>().unwrap().prey_born, 1);
         assert!(spawns.requests.is_empty());
     }

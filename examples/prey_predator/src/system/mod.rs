@@ -1,6 +1,7 @@
 pub use pixie::dispatcher::UnifiedDispatcher;
 use pixie::systems::*;
 
+pub mod brain;
 pub mod lifecycle;
 pub mod vision;
 

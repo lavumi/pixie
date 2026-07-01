@@ -29,6 +29,13 @@ pub const PREDATOR_VISION_MAX_DISTANCE: f32 = 9.0;
 pub const PREDATOR_VISION_TOTAL_ANGLE: f32 = 120.0 * std::f32::consts::PI / 180.0;
 pub const PREDATOR_VISION_RAY_INTERVAL: f32 = 15.0 * std::f32::consts::PI / 180.0;
 
+pub const BRAIN_HIDDEN_LAYERS: &[usize] = &[16];
+pub const BRAIN_OUTPUT_SIZE: usize = 2;
+pub const BRAIN_MUTATION_RATE: f32 = 0.05;
+pub const BRAIN_MUTATION_SIGMA: f32 = 0.1;
+pub const BRAIN_RESET_RATE: f32 = 0.001;
+pub const BRAIN_MAX_ABS_GENE: f32 = 5.0;
+
 pub const PREY_REPRODUCTION_AGE: f32 = 8.0;
 pub const PREY_REPRODUCTION_COOLDOWN: f32 = 5.0;
 pub const PREY_MAX_AGE: f32 = 60.0;
