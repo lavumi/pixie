@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use hecs::{Entity, World};
 use pixie::Transform;
@@ -24,23 +24,78 @@ pub fn process_predation(world: &mut World, config: &SimulationConfig, deaths: &
             Species::Predator => predators.push(AgentPosition { entity, position }),
         }
     }
+    predators.retain(|predator| {
+        world
+            .get::<&LifeCycle>(predator.entity)
+            .is_ok_and(|lifecycle| lifecycle.time_since_food >= config.predator_min_feed_interval)
+    });
+
+    let cell_columns = (config.world_width / config.predation_radius)
+        .floor()
+        .max(1.0) as i32;
+    let cell_rows = (config.world_height / config.predation_radius)
+        .floor()
+        .max(1.0) as i32;
+    let cell_width = config.world_width / cell_columns as f32;
+    let cell_height = config.world_height / cell_rows as f32;
+    let mut prey_cells: HashMap<(i32, i32), Vec<AgentPosition>> = HashMap::new();
+    for candidate in prey {
+        prey_cells
+            .entry(torus_cell(
+                candidate.position,
+                config.world_width,
+                config.world_height,
+                cell_columns,
+                cell_rows,
+            ))
+            .or_default()
+            .push(candidate);
+    }
 
     let mut eaten = HashSet::new();
     let radius_squared = config.predation_radius * config.predation_radius;
     for predator in predators {
-        let nearest = prey
-            .iter()
-            .filter(|candidate| !eaten.contains(&candidate.entity))
-            .filter_map(|candidate| {
-                let distance_squared = torus_distance_squared(
-                    predator.position,
-                    candidate.position,
-                    config.world_width,
-                    config.world_height,
+        let predator_cell = torus_cell(
+            predator.position,
+            config.world_width,
+            config.world_height,
+            cell_columns,
+            cell_rows,
+        );
+        let search_columns = (config.predation_radius / cell_width).ceil() as i32;
+        let search_rows = (config.predation_radius / cell_height).ceil() as i32;
+        let mut nearest: Option<(Entity, f32)> = None;
+
+        for cell_y in predator_cell.1 - search_rows..=predator_cell.1 + search_rows {
+            for cell_x in predator_cell.0 - search_columns..=predator_cell.0 + search_columns {
+                let cell = (
+                    cell_x.rem_euclid(cell_columns),
+                    cell_y.rem_euclid(cell_rows),
                 );
-                (distance_squared <= radius_squared).then_some((candidate.entity, distance_squared))
-            })
-            .min_by(|left, right| left.1.total_cmp(&right.1));
+                let Some(candidates) = prey_cells.get(&cell) else {
+                    continue;
+                };
+                for candidate in candidates {
+                    if eaten.contains(&candidate.entity) {
+                        continue;
+                    }
+                    let distance_squared = torus_distance_squared(
+                        predator.position,
+                        candidate.position,
+                        config.world_width,
+                        config.world_height,
+                    );
+                    if distance_squared > radius_squared
+                        || nearest
+                            .as_ref()
+                            .is_some_and(|current| current.1 <= distance_squared)
+                    {
+                        continue;
+                    }
+                    nearest = Some((candidate.entity, distance_squared));
+                }
+            }
+        }
 
         let Some((prey_entity, _distance_squared)) = nearest else {
             continue;
@@ -57,6 +112,25 @@ pub fn process_predation(world: &mut World, config: &SimulationConfig, deaths: &
             lifecycle.time_since_food = 0.0;
         }
     }
+}
+
+fn torus_cell(
+    position: [f32; 2],
+    world_width: f32,
+    world_height: f32,
+    columns: i32,
+    rows: i32,
+) -> (i32, i32) {
+    let normalized_x = (position[0] + world_width * 0.5) / world_width;
+    let normalized_y = (position[1] + world_height * 0.5) / world_height;
+    (
+        (normalized_x * columns as f32)
+            .floor()
+            .clamp(0.0, (columns - 1) as f32) as i32,
+        (normalized_y * rows as f32)
+            .floor()
+            .clamp(0.0, (rows - 1) as f32) as i32,
+    )
 }
 
 pub fn update_lifecycles(
@@ -253,7 +327,10 @@ mod tests {
             &mut world,
             Species::Predator,
             [19.8, 0.0],
-            LifeCycle::default(),
+            LifeCycle {
+                time_since_food: 1.0,
+                ..LifeCycle::default()
+            },
             0.0,
         );
         let prey = spawn_agent(
@@ -273,6 +350,49 @@ mod tests {
         process_predation(&mut world, &config, &mut deaths);
 
         assert_eq!(deaths.requests[0].entity, prey);
+    }
+
+    #[test]
+    fn predator_waits_for_minimum_feed_interval() {
+        let mut world = World::new();
+        let predator = spawn_agent(
+            &mut world,
+            Species::Predator,
+            [0.0, 0.0],
+            LifeCycle {
+                time_since_food: 0.5,
+                ..LifeCycle::default()
+            },
+            0.0,
+        );
+        let prey = spawn_agent(
+            &mut world,
+            Species::Prey,
+            [0.2, 0.0],
+            LifeCycle::default(),
+            0.0,
+        );
+        let config = SimulationConfig {
+            predation_radius: 1.0,
+            predator_min_feed_interval: 0.75,
+            ..SimulationConfig::default()
+        };
+        let mut deaths = DeathQueue::default();
+
+        process_predation(&mut world, &config, &mut deaths);
+        assert!(deaths.requests.is_empty());
+
+        world
+            .get::<&mut LifeCycle>(predator)
+            .unwrap()
+            .time_since_food = 0.75;
+        process_predation(&mut world, &config, &mut deaths);
+
+        assert_eq!(deaths.requests.len(), 1);
+        assert_eq!(deaths.requests[0].entity, prey);
+        let lifecycle = world.get::<&LifeCycle>(predator).unwrap();
+        assert_eq!(lifecycle.food_eaten, 1);
+        assert_eq!(lifecycle.time_since_food, 0.0);
     }
 
     #[test]

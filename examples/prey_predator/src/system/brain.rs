@@ -3,6 +3,10 @@ use hecs::World;
 use crate::components::{AgentMotion, Brain, BrainOutput, Vision, VisionOutput};
 
 pub fn process_brains(world: &mut World) {
+    let mut inputs = Vec::new();
+    let mut activations = Vec::new();
+    let mut next = Vec::new();
+
     for (_entity, (vision, vision_output, brain, brain_output, motion)) in world
         .query::<(
             &Vision,
@@ -13,18 +17,20 @@ pub fn process_brains(world: &mut World) {
         )>()
         .iter()
     {
-        let inputs = vision_output.inputs(vision);
-        let outputs = brain.genome.evaluate(&brain.shape, &inputs);
+        vision_output.write_inputs(vision, &mut inputs);
+        brain
+            .genome
+            .evaluate_with_buffers(&brain.shape, &inputs, &mut activations, &mut next);
         assert_eq!(
-            outputs.len(),
+            activations.len(),
             2,
             "prey predator brains must produce rotation and speed outputs"
         );
 
-        brain_output.angular_velocity = outputs[0];
-        brain_output.speed = outputs[1];
-        motion.angular_velocity = outputs[0] * motion.max_abs_angular_velocity;
-        motion.speed = outputs[1] * motion.max_abs_speed;
+        brain_output.angular_velocity = activations[0];
+        brain_output.speed = activations[1];
+        motion.angular_velocity = activations[0] * motion.max_abs_angular_velocity;
+        motion.speed = activations[1] * motion.max_abs_speed;
     }
 }
 

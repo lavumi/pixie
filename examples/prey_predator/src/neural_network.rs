@@ -53,14 +53,38 @@ pub struct Genome {
 
 impl Genome {
     pub fn random<R: Rng + ?Sized>(shape: &NetworkShape, rng: &mut R) -> Self {
+        Self::random_with_output_biases(shape, &vec![0.0; shape.output_size()], rng)
+    }
+
+    pub fn random_with_output_biases<R: Rng + ?Sized>(
+        shape: &NetworkShape,
+        output_biases: &[f32],
+        rng: &mut R,
+    ) -> Self {
+        assert_eq!(
+            output_biases.len(),
+            shape.output_size(),
+            "output bias count does not match network shape"
+        );
+
         let mut genes = Vec::with_capacity(shape.parameter_count());
-        for (input_size, output_size) in shape.connections() {
+        let connection_count = shape.layer_sizes.len() - 1;
+        for (layer_index, (input_size, output_size)) in shape.connections().enumerate() {
             let limit = (6.0 / (input_size + output_size) as f32).sqrt();
-            for _ in 0..output_size {
-                for _ in 0..input_size {
-                    genes.push(rng.gen_range(-limit..=limit));
+            if layer_index + 1 == connection_count {
+                for bias in output_biases {
+                    for _ in 0..input_size {
+                        genes.push(rng.gen_range(-limit..=limit));
+                    }
+                    genes.push(*bias);
                 }
-                genes.push(0.0);
+            } else {
+                for _ in 0..output_size {
+                    for _ in 0..input_size {
+                        genes.push(rng.gen_range(-limit..=limit));
+                    }
+                    genes.push(0.0);
+                }
             }
         }
         Self { genes }
@@ -77,6 +101,19 @@ impl Genome {
     }
 
     pub fn evaluate(&self, shape: &NetworkShape, inputs: &[f32]) -> Vec<f32> {
+        let mut activations = Vec::new();
+        let mut next = Vec::new();
+        self.evaluate_with_buffers(shape, inputs, &mut activations, &mut next);
+        activations
+    }
+
+    pub fn evaluate_with_buffers(
+        &self,
+        shape: &NetworkShape,
+        inputs: &[f32],
+        activations: &mut Vec<f32>,
+        next: &mut Vec<f32>,
+    ) {
         assert_eq!(
             self.genes.len(),
             shape.parameter_count(),
@@ -88,10 +125,12 @@ impl Genome {
             "input length does not match network shape"
         );
 
-        let mut activations = inputs.to_vec();
+        activations.clear();
+        activations.extend_from_slice(inputs);
         let mut gene_index = 0;
         for (input_size, output_size) in shape.connections() {
-            let mut next = Vec::with_capacity(output_size);
+            next.clear();
+            next.reserve(output_size);
             for _ in 0..output_size {
                 let weights = &self.genes[gene_index..gene_index + input_size];
                 gene_index += input_size;
@@ -103,9 +142,8 @@ impl Genome {
                     .fold(bias, |sum, (input, weight)| sum + input * weight);
                 next.push(weighted_sum.tanh());
             }
-            activations = next;
+            std::mem::swap(activations, next);
         }
-        activations
     }
 
     pub fn mutated<R: Rng + ?Sized>(&self, config: &MutationConfig, rng: &mut R) -> Self {
@@ -193,6 +231,33 @@ mod tests {
         assert_eq!(genome.genes.len(), shape.parameter_count());
         assert_eq!(output.len(), shape.output_size());
         assert!(output.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn output_biases_control_zero_input_defaults() {
+        let shape = NetworkShape::new(3, &[], 2);
+        let mut rng = StdRng::seed_from_u64(9);
+        let genome = Genome::random_with_output_biases(&shape, &[0.0, 1.0], &mut rng);
+
+        let output = genome.evaluate(&shape, &[0.0, 0.0, 0.0]);
+
+        assert_eq!(output[0], 0.0);
+        assert!((output[1] - 1.0_f32.tanh()).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn initial_population_favors_forward_motion() {
+        let shape = NetworkShape::new(27, &[16], 2);
+        let inputs: Vec<f32> = [1.0, 0.0, 0.0].repeat(9);
+        let mut rng = StdRng::seed_from_u64(13);
+        let forward_count = (0..1_000)
+            .filter(|_| {
+                let genome = Genome::random_with_output_biases(&shape, &[0.0, 1.0], &mut rng);
+                genome.evaluate(&shape, &inputs)[1] > 0.0
+            })
+            .count();
+
+        assert!(forward_count >= 750);
     }
 
     #[test]

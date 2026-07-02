@@ -33,6 +33,7 @@ const SELECTION_OUTLINE_COLOR: [f32; 4] = [1.0, 0.85, 0.1, 1.0];
 pub struct PreyPredatorApp {
     paused: bool,
     hud_text_entity: Option<Entity>,
+    vision_elapsed: f32,
     rng: ThreadRng,
 }
 
@@ -41,6 +42,7 @@ impl Default for PreyPredatorApp {
         Self {
             paused: false,
             hud_text_entity: None,
+            vision_elapsed: 0.0,
             rng: thread_rng(),
         }
     }
@@ -53,7 +55,9 @@ impl Application for PreyPredatorApp {
             camera.set_zoom(24.0);
         }
 
-        resources.insert(SimulationConfig::default());
+        let simulation_config = SimulationConfig::default();
+        self.vision_elapsed = simulation_config.vision_update_interval;
+        resources.insert(simulation_config);
         resources.insert(SimulationStats::default());
         resources.insert(SelectionState::default());
         resources.insert(DeathQueue::default());
@@ -79,13 +83,17 @@ impl Application for PreyPredatorApp {
         resources: &mut ResourceContainer,
         fixed_dt: f32,
     ) {
-        collect_vision(world);
-        process_brains(world);
-        self.update_agent_motion(world, resources, fixed_dt);
-
         let Some(simulation_config) = resources.get::<SimulationConfig>().cloned() else {
             return;
         };
+        self.vision_elapsed += fixed_dt;
+        if self.vision_elapsed >= simulation_config.vision_update_interval {
+            self.vision_elapsed %= simulation_config.vision_update_interval;
+            collect_vision(world);
+            process_brains(world);
+        }
+        self.update_agent_motion(world, resources, fixed_dt);
+
         let mut deaths = resources.remove::<DeathQueue>().unwrap_or_default();
         let mut spawns = resources.remove::<SpawnQueue>().unwrap_or_default();
         deaths.requests.clear();
@@ -293,7 +301,11 @@ impl PreyPredatorApp {
                 &simulation_config.brain_hidden_layers,
                 simulation_config.brain_output_size,
             );
-            let genome = Genome::random(&shape, &mut self.rng);
+            let genome = Genome::random_with_output_biases(
+                &shape,
+                &[0.0, simulation_config.brain_initial_speed_bias],
+                &mut self.rng,
+            );
             Brain::new(shape, genome)
         });
         assert_eq!(
@@ -353,6 +365,10 @@ impl PreyPredatorApp {
         resources.insert(SimulationStats::default());
         resources.insert(DeathQueue::default());
         resources.insert(SpawnQueue::default());
+        self.vision_elapsed = resources
+            .get::<SimulationConfig>()
+            .map(|config| config.vision_update_interval)
+            .unwrap_or_default();
         if let Some(selection) = resources.get_mut::<SelectionState>() {
             selection.clear();
         }

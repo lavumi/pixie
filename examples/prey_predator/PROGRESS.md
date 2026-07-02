@@ -49,7 +49,7 @@
 ### Vision
 
 - Added species-specific `Vision` distance, field-of-view, and ray interval.
-- Vision runs before movement in each fixed update.
+- Vision runs before movement at a configurable sensing interval.
 - Rays use circle intersections against snapshotted agent bounds.
 - Each ray keeps only its nearest target and excludes the viewer itself.
 - `VisionOutput` preserves the target entity, species, and surface distance.
@@ -112,6 +112,7 @@
   - die at the configured maximum age
 - Predators:
   - eat the nearest prey inside the configured predation radius
+  - wait for a configured minimum interval between successful attacks
   - reset starvation time and gain food when eating
   - consume the configured food count when reproducing
   - die from maximum age or starvation
@@ -155,6 +156,19 @@
 - Gene values are clamped to a configurable absolute limit.
 - Evolution remains asynchronous and single-parent; NEAT and crossover are
   deferred.
+
+### Population Performance
+
+- Initial genomes now use a configurable positive speed-output bias, so the
+  initial population favors forward movement while negative speed remains valid.
+- Replaced all-agent vision scans with a uniform spatial grid.
+- Added a distance broad-phase before exact ray-circle intersections.
+- Predation now uses a torus-aware spatial grid instead of scanning every prey
+  for every predator.
+- Reuses vision output, candidate, neural input, and activation buffers.
+- Vision and brain inference default to 15 Hz while movement remains at 60 Hz.
+- Added regression coverage for forward-biased initialization, grid-boundary
+  detection, and 1,024-agent vision collection.
 
 ## Verified
 

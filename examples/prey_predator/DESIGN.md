@@ -231,6 +231,7 @@ Prey:
 Predator:
 
 - Gains one food count when it eats a prey.
+- Must wait `predator_min_feed_interval` seconds before eating again.
 - Can reproduce after eating `predator_food_to_reproduce` prey.
 - Dies when older than `predator_max_age`.
 - Dies when it has not eaten for `predator_starvation_time` seconds.
@@ -297,10 +298,11 @@ Lifecycle:
 | Prey reproduction age | `8.0 s` |
 | Prey reproduction cooldown | `5.0 s` |
 | Prey max age | `60.0 s` |
-| Predator food to reproduce | `3` |
+| Predator food to reproduce | `4` |
 | Predator reproduction cooldown | `8.0 s` |
 | Predator max age | `80.0 s` |
 | Predator starvation time | `12.0 s` |
+| Predator minimum feed interval | `0.75 s` |
 | Predation radius | `0.6` |
 | Offspring spawn offset | `0.8` |
 
@@ -361,7 +363,10 @@ Default topology:
 - Output 1 is normalized signed speed, so backward movement remains possible.
 - Every layer uses `tanh`, keeping outputs in `[-1, 1]`.
 - Motion outputs are multiplied by each species' configured absolute limits.
-- Weights are initialized with Xavier uniform sampling and biases start at zero.
+- Weights are initialized with Xavier uniform sampling.
+- Hidden and rotation-output biases start at zero.
+- The speed-output bias defaults to `1.0`, favoring forward motion without
+  removing the network's ability to evolve negative speed.
 
 The genome stores each layer in neuron-major order. Every neuron contributes all
 incoming weights followed by one bias. The default `27 -> 16 -> 2` network has
@@ -410,10 +415,13 @@ pub struct SimulationConfig {
     pub predator_reproduction_cooldown: f32,
     pub predator_max_age: f32,
     pub predator_starvation_time: f32,
+    pub predator_min_feed_interval: f32,
     pub predation_radius: f32,
     pub offspring_spawn_offset: f32,
+    pub vision_update_interval: f32,
     pub brain_hidden_layers: Vec<usize>,
     pub brain_output_size: usize,
+    pub brain_initial_speed_bias: f32,
     pub brain_mutation_rate: f32,
     pub brain_mutation_sigma: f32,
     pub brain_reset_rate: f32,
@@ -442,8 +450,8 @@ The config should start as code constants. Runtime editing can be added later.
 
 The fixed update should run simulation systems in this order:
 
-1. `collect_vision`
-2. `process_brains`
+1. `collect_vision` at the configured sensing interval
+2. `process_brains` after each vision update
 3. `move_agents` and `wrap_world`
 4. `process_predation`
 5. `update_lifecycles`
@@ -459,6 +467,12 @@ Reasoning:
 
 - Vision snapshots positions before movement, so it reads the previous fixed
   frame's positions.
+- Vision and brain inference default to 15 Hz while movement stays at the fixed
+  60 Hz rate.
+- Vision uses a uniform spatial grid and distance broad-phase before exact ray
+  intersections.
+- Predation uses a separate torus-aware grid sized around the configured
+  predation radius.
 - Movement should happen before predation.
 - Predation should mark prey as dead before reproduction is processed.
 - Despawns and spawns happen only after systems finish collecting decisions.

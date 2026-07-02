@@ -152,13 +152,20 @@ impl VisionOutput {
     }
 
     pub fn inputs(&self, vision: &Vision) -> Vec<f32> {
+        let mut inputs = Vec::with_capacity(vision.input_len());
+        self.write_inputs(vision, &mut inputs);
+        inputs
+    }
+
+    pub fn write_inputs(&self, vision: &Vision, inputs: &mut Vec<f32>) {
         assert_eq!(
             self.hits.len(),
             vision.ray_count(),
             "vision output does not match vision parameters"
         );
 
-        let mut inputs = Vec::with_capacity(vision.input_len());
+        inputs.clear();
+        inputs.reserve(vision.input_len());
         for hit in &self.hits {
             match hit {
                 Some(hit) => {
@@ -169,6 +176,5 @@ impl VisionOutput {
                 None => inputs.extend_from_slice(&[1.0, 0.0, 0.0]),
             }
         }
-        inputs
     }
 }
